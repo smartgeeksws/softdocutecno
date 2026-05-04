@@ -1,0 +1,26 @@
+# Entorno virtual
+.venv/
+venv/
+env/
+
+# Secretos y claves
+.streamlit/secrets.toml
+.env
+
+# Archivos generados por la app
+documentos_generados/
+datos_acta_inicio.json
+*.pdf
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# VS Code opcional
+.vscode/
