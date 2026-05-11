@@ -1831,14 +1831,6 @@ def generar_pdf_cronograma(datos: dict) -> str:
 
         c.restoreState()
 
-    estilo_titulo = ParagraphStyle(
-        name="TituloCronograma",
-        fontName="Helvetica-Bold",
-        fontSize=10,
-        leading=12,
-        alignment=TA_CENTER,
-    )
-
     estilo_normal = ParagraphStyle(
         name="NormalCronograma",
         fontName="Helvetica",
@@ -1858,14 +1850,32 @@ def generar_pdf_cronograma(datos: dict) -> str:
     estilo_centro = ParagraphStyle(
         name="CentroCronograma",
         fontName="Helvetica-Bold",
-        fontSize=6.5,
-        leading=7.5,
+        fontSize=5.2,
+        leading=6.0,
+        alignment=TA_CENTER,
+    )
+
+    estilo_mes = ParagraphStyle(
+        name="MesCronograma",
+        fontName="Helvetica-Bold",
+        fontSize=5.0,
+        leading=5.6,
+        alignment=TA_CENTER,
+    )
+
+    estilo_dia = ParagraphStyle(
+        name="DiaCronograma",
+        fontName="Helvetica",
+        fontSize=4.8,
+        leading=5.2,
         alignment=TA_CENTER,
     )
 
     historia = []
 
-    # Datos generales
+    # =====================================================
+    # DATOS GENERALES DEL CRONOGRAMA
+    # =====================================================
     datos_generales = [
         [
             Paragraph("<b>NOMBRE DEL PROYECTO</b>", estilo_negrita),
@@ -1918,31 +1928,33 @@ def generar_pdf_cronograma(datos: dict) -> str:
     historia.append(tabla_datos)
     historia.append(Spacer(1, 0.25 * cm))
 
+    # =====================================================
+    # TABLA GANTT
+    # =====================================================
     fechas = datos["fechas_programadas"]
     actividades = datos["actividades"]
     bloques_fechas = datos["bloques_fechas"]
 
-    # Si hay muchas fechas, se ajusta ancho de columnas
     ancho_total = page_width - 1.6 * cm
     ancho_item = 1.0 * cm
     ancho_desc = 8.0 * cm
     ancho_fechas_total = ancho_total - ancho_item - ancho_desc
 
     if fechas:
-        ancho_fecha = max(0.38 * cm, ancho_fechas_total / len(fechas))
+        ancho_fecha = max(0.34 * cm, ancho_fechas_total / len(fechas))
     else:
         ancho_fecha = 0.6 * cm
 
     col_widths = [ancho_item, ancho_desc] + [ancho_fecha for _ in fechas]
 
-    # Fila de meses
+    # Fila de meses con celdas unificadas por mes
     fila_meses = [
         Paragraph("<b>ITEM</b>", estilo_centro),
         Paragraph("<b>DESCRIPCIÓN ACTIVIDAD</b>", estilo_centro),
     ]
 
     for fecha in fechas:
-        fila_meses.append(Paragraph(f"<b>{nombre_mes_es(fecha)[:3]}</b>", estilo_centro))
+        fila_meses.append(Paragraph(nombre_mes_es(fecha), estilo_mes))
 
     # Fila de días
     fila_dias = [
@@ -1951,7 +1963,7 @@ def generar_pdf_cronograma(datos: dict) -> str:
     ]
 
     for fecha in fechas:
-        fila_dias.append(Paragraph(str(fecha.day), estilo_centro))
+        fila_dias.append(Paragraph(str(fecha.day), estilo_dia))
 
     tabla_data = [fila_meses, fila_dias]
 
@@ -1964,14 +1976,11 @@ def generar_pdf_cronograma(datos: dict) -> str:
         ]
 
         for fecha in fechas:
-            if fecha in fechas_actividad:
-                fila.append(Paragraph("", estilo_centro))
-            else:
-                fila.append(Paragraph("", estilo_centro))
+            fila.append(Paragraph("", estilo_centro))
 
         tabla_data.append(fila)
 
-    row_heights = [0.45 * cm, 0.45 * cm] + [0.75 * cm for _ in actividades]
+    row_heights = [0.42 * cm, 0.38 * cm] + [0.75 * cm for _ in actividades]
 
     tabla_gantt = Table(
         tabla_data,
@@ -1987,65 +1996,52 @@ def generar_pdf_cronograma(datos: dict) -> str:
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (0, 0), (0, -1), "CENTER"),
         ("ALIGN", (2, 0), (-1, -1), "CENTER"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 2),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-        ("TOPPADDING", (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("LEFTPADDING", (0, 0), (-1, -1), 1),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 1),
+        ("TOPPADDING", (0, 0), (-1, -1), 1),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
     ]
 
+    # Unificar celdas de meses consecutivos
+    if fechas:
+        inicio_mes = 2
+        mes_actual = fechas[0].month
+        anio_actual = fechas[0].year
+
+        for idx_fecha, fecha in enumerate(fechas, start=2):
+            es_ultima = idx_fecha == len(fechas) + 1
+            cambia_mes = fecha.month != mes_actual or fecha.year != anio_actual
+
+            if cambia_mes:
+                fin_mes = idx_fecha - 1
+                if fin_mes > inicio_mes:
+                    estilos_tabla.append(("SPAN", (inicio_mes, 0), (fin_mes, 0)))
+                inicio_mes = idx_fecha
+                mes_actual = fecha.month
+                anio_actual = fecha.year
+
+            if es_ultima:
+                fin_mes = idx_fecha
+                if fin_mes > inicio_mes:
+                    estilos_tabla.append(("SPAN", (inicio_mes, 0), (fin_mes, 0)))
+
+    # Marcar fechas de actividad en verde
     verde = colors.HexColor("#39a935")
 
     for idx_actividad, fechas_actividad in enumerate(bloques_fechas, start=2):
         fila_tabla = idx_actividad
         for idx_fecha, fecha in enumerate(fechas, start=2):
             if fecha in fechas_actividad:
-                estilos_tabla.append(("BACKGROUND", (idx_fecha, fila_tabla), (idx_fecha, fila_tabla), verde))
+                estilos_tabla.append(
+                    ("BACKGROUND", (idx_fecha, fila_tabla), (idx_fecha, fila_tabla), verde)
+                )
 
     tabla_gantt.setStyle(TableStyle(estilos_tabla))
 
     historia.append(tabla_gantt)
-    historia.append(Spacer(1, 0.25 * cm))
 
-    # Tabla de entregables
-    entregables_data = [
-        [
-            Paragraph("<b>SEMANA / ACTIVIDAD</b>", estilo_centro),
-            Paragraph("<b>ENTREGABLE</b>", estilo_centro),
-        ]
-    ]
-
-    for idx, actividad in enumerate(actividades, start=1):
-        fechas_actividad = bloques_fechas[idx - 1] if idx - 1 < len(bloques_fechas) else []
-        if fechas_actividad:
-            periodo = f"{fechas_actividad[0].strftime('%d/%m/%Y')} al {fechas_actividad[-1].strftime('%d/%m/%Y')}"
-        else:
-            periodo = "Sin fecha asignada"
-
-        entregables_data.append(
-            [
-                Paragraph(str(idx), estilo_centro),
-                Paragraph(f"{actividad} — {periodo}", estilo_normal),
-            ]
-        )
-
-    tabla_entregables = Table(
-        entregables_data,
-        colWidths=[3.0 * cm, 23.5 * cm],
-    )
-
-    tabla_entregables.setStyle(
-        TableStyle(
-            [
-                ("GRID", (0, 0), (-1, -1), 0.35, colors.black),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ]
-        )
-    )
-
-    historia.append(tabla_entregables)
+    # Se elimina la tabla inferior de entregables.
+    # El PDF termina únicamente con el diagrama de Gantt.
 
     doc.build(
         historia,
