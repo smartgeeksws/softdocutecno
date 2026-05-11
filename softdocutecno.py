@@ -164,13 +164,30 @@ def guardar_datos_json(datos: dict, ruta: str = "datos_acta_inicio.json") -> Non
 
 
 def limpiar_respuesta_json(texto: str) -> str:
-    texto = texto.strip()
-    if texto.startswith("```json"):
-        texto = texto.replace("```json", "", 1).strip()
-    if texto.startswith("```"):
-        texto = texto.replace("```", "", 1).strip()
-    if texto.endswith("```"):
-        texto = texto[:-3].strip()
+    """
+    Limpia respuestas de IA que pueden venir con markdown o texto adicional.
+    Extrae el primer objeto JSON válido entre llaves cuando sea posible.
+    """
+    import re
+
+    if not texto:
+        return ""
+
+    texto = str(texto).strip()
+    texto = texto.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
+
+    if texto.startswith("{") and texto.endswith("}"):
+        return texto
+
+    inicio = texto.find("{")
+    fin = texto.rfind("}")
+    if inicio != -1 and fin != -1 and fin > inicio:
+        return texto[inicio:fin + 1].strip()
+
+    match = re.search(r"\{.*\}", texto, re.DOTALL)
+    if match:
+        return match.group(0).strip()
+
     return texto
 
 
@@ -2282,6 +2299,14 @@ def generar_estado_arte_con_chatgpt(
     tecnologias_previstas: list[str],
     modelo: str = "gpt-4.1-mini",
 ) -> dict:
+    """
+    Genera el Estado del Arte en dos pasos:
+    1. Intenta obtener notas con búsqueda web.
+    2. Convierte esas notas en JSON usando salida estructurada.
+
+    Si la cuenta/modelo no soporta web_search_preview o text.format, cae a métodos alternos
+    y nunca deja la app bloqueada por JSON inválido.
+    """
     if OpenAI is None:
         raise ImportError("No está instalada la librería openai. Instálala con: pip install openai")
 
@@ -2291,135 +2316,259 @@ def generar_estado_arte_con_chatgpt(
 
     client = OpenAI(api_key=api_key)
 
-    instrucciones = """
-Actúa como investigador académico senior y formulador de proyectos de base tecnológica para la Red Tecnoparque SENA.
+    tecnologias_texto = ", ".join(tecnologias_previstas) if tecnologias_previstas else "No especificadas"
 
-Debes generar un Estado del Arte profesional, académico e investigativo en español.
-Usa búsqueda web para encontrar referentes públicos reales y artículos científicos o técnicos verificables.
-No inventes enlaces.
-No inventes referencias.
-Si una fuente no puede ser verificada, no la incluyas.
-Usa normas APA 7.
-El apartado de Antecedentes y Contexto debe tener mínimo 500 palabras.
-La tabla de proyectos similares debe tener mínimo 5 proyectos o iniciativas reales con enlace de consulta.
-El estado del arte tecnológico debe incluir las tecnologías previstas por el usuario y contrastarlas con 5 o 6 tecnologías emergentes del mercado.
-Incluye citas APA dentro del texto cuando corresponda.
-Responde únicamente en JSON válido, sin markdown, sin texto adicional.
+    # -----------------------------------------------------
+    # PASO 1: Investigación con búsqueda web, en texto libre.
+    # -----------------------------------------------------
+    prompt_busqueda = f"""
+Investiga fuentes públicas y académicas para construir un Estado del Arte en español.
+
+Proyecto: {nombre_proyecto}
+Código: {codigo_proyecto}
+Descripción: {descripcion_proyecto}
+Tecnologías previstas: {tecnologias_texto}
+
+Necesito notas verificables sobre:
+1. Contexto nacional e internacional del sector.
+2. Mínimo 5 proyectos o iniciativas similares con nombre, entidad y enlace.
+3. Tecnologías relevantes y emergentes.
+4. Mínimo 5 artículos, fuentes técnicas o documentos académicos de validación.
+5. Referencias en APA 7.
+
+Entrega notas ordenadas, con enlaces visibles cuando existan.
 """
 
-    entrada = f"""
-Genera un Estado del Arte con la siguiente estructura:
+    notas_investigacion = ""
+    try:
+        respuesta_busqueda = client.responses.create(
+            model=modelo,
+            tools=[{"type": "web_search_preview"}],
+            input=prompt_busqueda,
+            temperature=0.2,
+        )
+        notas_investigacion = getattr(respuesta_busqueda, "output_text", "") or ""
+    except Exception:
+        notas_investigacion = (
+            "No fue posible ejecutar búsqueda web desde la API. "
+            "Generar el documento con base en conocimiento general y marcar fuentes para verificación manual."
+        )
 
+    # -----------------------------------------------------
+    # Esquema JSON estricto para Responses API.
+    # -----------------------------------------------------
+    estado_arte_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "introduccion": {"type": "string"},
+            "objetivos": {"type": "array", "items": {"type": "string"}},
+            "antecedentes_contexto": {"type": "string"},
+            "contexto_nacional_internacional": {"type": "string"},
+            "proyectos_similares": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "numero": {"type": "integer"},
+                        "nombre": {"type": "string"},
+                        "enlace": {"type": "string"},
+                        "descripcion_breve": {"type": "string"},
+                        "referencia_apa": {"type": "string"},
+                    },
+                    "required": ["numero", "nombre", "enlace", "descripcion_breve", "referencia_apa"],
+                },
+            },
+            "tecnologias_relevantes": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "tecnologia": {"type": "string"},
+                        "analisis": {"type": "string"},
+                        "cita_apa": {"type": "string"},
+                    },
+                    "required": ["tecnologia", "analisis", "cita_apa"],
+                },
+            },
+            "tecnologias_emergentes": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "tecnologia": {"type": "string"},
+                        "analisis": {"type": "string"},
+                        "cita_apa": {"type": "string"},
+                    },
+                    "required": ["tecnologia", "analisis", "cita_apa"],
+                },
+            },
+            "articulos_validacion": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "numero": {"type": "integer"},
+                        "tecnologia": {"type": "string"},
+                        "articulo": {"type": "string"},
+                        "enlace": {"type": "string"},
+                        "referencia_apa": {"type": "string"},
+                    },
+                    "required": ["numero", "tecnologia", "articulo", "enlace", "referencia_apa"],
+                },
+            },
+            "conclusiones": {"type": "string"},
+            "bibliografia": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": [
+            "introduccion",
+            "objetivos",
+            "antecedentes_contexto",
+            "contexto_nacional_internacional",
+            "proyectos_similares",
+            "tecnologias_relevantes",
+            "tecnologias_emergentes",
+            "articulos_validacion",
+            "conclusiones",
+            "bibliografia",
+        ],
+    }
+
+    instrucciones_json = """
+Actúa como investigador académico senior y formulador de proyectos de base tecnológica para la Red Tecnoparque SENA.
+Genera un Estado del Arte profesional, académico e investigativo en español.
+Respeta la estructura solicitada y usa exclusivamente JSON válido según el esquema.
+No uses markdown.
+No uses bloques de código.
+El campo antecedentes_contexto debe tener mínimo 500 palabras.
+Incluye 4 objetivos.
+Incluye mínimo 5 proyectos similares.
+Incluye las tecnologías previstas por el usuario y 5 o 6 tecnologías emergentes.
+Incluye mínimo 5 artículos o fuentes técnicas de validación.
+Usa APA 7 en referencias.
+"""
+
+    prompt_json = f"""
 Datos del proyecto:
 - Nombre del proyecto: {nombre_proyecto}
 - Código del proyecto: {codigo_proyecto}
 - Descripción detallada: {descripcion_proyecto}
-- Tecnologías previstas por el usuario: {", ".join(tecnologias_previstas)}
+- Tecnologías previstas: {tecnologias_texto}
 
-Estructura requerida:
-1. introduccion
-2. objetivos: lista de 4 objetivos del estado del arte.
-3. antecedentes_contexto: mínimo 500 palabras, usando la descripción detallada. Debe ampliar origen, talento, necesidad, innovación y pertinencia.
-4. contexto_nacional_internacional
-5. proyectos_similares: mínimo 5 objetos con numero, nombre, enlace, descripcion_breve, referencia_apa.
-6. tecnologias_relevantes: tecnologías sugeridas por el usuario. Cada objeto debe tener tecnologia, analisis y cita_apa.
-7. tecnologias_emergentes: 5 o 6 tecnologías emergentes comparables. Cada objeto debe tener tecnologia, analisis y cita_apa.
-8. articulos_validacion: tabla con mínimo 5 artículos científicos o técnicos. Cada objeto debe tener numero, tecnologia, articulo, enlace, referencia_apa.
-9. conclusiones
-10. bibliografia: listado final APA 7 incluyendo todas las fuentes consultadas.
-
-Formato JSON obligatorio:
-{{
-  "introduccion": "...",
-  "objetivos": ["...", "...", "...", "..."],
-  "antecedentes_contexto": "...",
-  "contexto_nacional_internacional": "...",
-  "proyectos_similares": [
-    {{
-      "numero": 1,
-      "nombre": "...",
-      "enlace": "...",
-      "descripcion_breve": "...",
-      "referencia_apa": "..."
-    }}
-  ],
-  "tecnologias_relevantes": [
-    {{
-      "tecnologia": "...",
-      "analisis": "...",
-      "cita_apa": "..."
-    }}
-  ],
-  "tecnologias_emergentes": [
-    {{
-      "tecnologia": "...",
-      "analisis": "...",
-      "cita_apa": "..."
-    }}
-  ],
-  "articulos_validacion": [
-    {{
-      "numero": 1,
-      "tecnologia": "...",
-      "articulo": "...",
-      "enlace": "...",
-      "referencia_apa": "..."
-    }}
-  ],
-  "conclusiones": "...",
-  "bibliografia": ["...", "..."]
-}}
+Notas de investigación disponibles:
+{notas_investigacion}
 """
 
+    # -----------------------------------------------------
+    # PASO 2: Intento principal con Structured Outputs.
+    # -----------------------------------------------------
+    datos = None
     try:
-        respuesta = client.responses.create(
+        respuesta_json = client.responses.create(
             model=modelo,
-            tools=[{"type": "web_search_preview"}],
-            input=[
-                {"role": "system", "content": instrucciones},
-                {"role": "user", "content": entrada},
-            ],
-            temperature=0.25,
+            instructions=instrucciones_json,
+            input=prompt_json,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "estado_arte_schema",
+                    "schema": estado_arte_schema,
+                    "strict": True,
+                }
+            },
+            temperature=0.15,
         )
+        texto_limpio = limpiar_respuesta_json(respuesta_json.output_text)
+        datos = json.loads(texto_limpio)
     except Exception:
-        # Si la cuenta o el modelo no tiene habilitada búsqueda web, hace generación sin herramienta.
-        respuesta = client.responses.create(
-            model=modelo,
-            instructions=instrucciones + "\nSi no tienes acceso a búsqueda web, aclara dentro del JSON que las fuentes deben ser verificadas manualmente.",
-            input=entrada,
-            temperature=0.25,
+        datos = None
+
+    # -----------------------------------------------------
+    # PASO 3: Fallback con Chat Completions en modo JSON.
+    # -----------------------------------------------------
+    if datos is None:
+        prompt_chat = instrucciones_json + "\nDevuelve únicamente JSON válido con las claves requeridas.\n\n" + prompt_json
+        try:
+            respuesta_chat = client.chat.completions.create(
+                model=modelo,
+                messages=[
+                    {"role": "system", "content": "Devuelve únicamente JSON válido. Sin markdown."},
+                    {"role": "user", "content": prompt_chat},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.15,
+            )
+            texto_chat = respuesta_chat.choices[0].message.content or ""
+            datos = json.loads(limpiar_respuesta_json(texto_chat))
+        except Exception:
+            datos = None
+
+    # -----------------------------------------------------
+    # PASO 4: Último fallback: modo prueba automático para no bloquear la app.
+    # -----------------------------------------------------
+    if datos is None:
+        datos = generar_estado_arte_modo_prueba(
+            nombre_proyecto=nombre_proyecto,
+            codigo_proyecto=codigo_proyecto,
+            descripcion_proyecto=descripcion_proyecto,
+            tecnologias_previstas=tecnologias_previstas,
+        )
+        datos["introduccion"] = (
+            "Nota técnica: la generación con búsqueda web/JSON estructurado falló en la API, "
+            "por lo cual se generó una versión base editable para no bloquear el flujo. "
+            + datos.get("introduccion", "")
         )
 
-    texto = limpiar_respuesta_json(respuesta.output_text)
-
-    try:
-        datos = json.loads(texto)
-    except json.JSONDecodeError:
-        raise ValueError("La respuesta de la IA no llegó en JSON válido. Intenta nuevamente o activa modo prueba.")
-
-    campos_requeridos = [
-        "introduccion",
+    # -----------------------------------------------------
+    # Normalización final para que el PDF nunca falle por claves faltantes.
+    # -----------------------------------------------------
+    campos_lista = [
         "objetivos",
-        "antecedentes_contexto",
-        "contexto_nacional_internacional",
         "proyectos_similares",
         "tecnologias_relevantes",
         "tecnologias_emergentes",
         "articulos_validacion",
-        "conclusiones",
         "bibliografia",
     ]
+    campos_texto = [
+        "introduccion",
+        "antecedentes_contexto",
+        "contexto_nacional_internacional",
+        "conclusiones",
+    ]
 
-    for campo in campos_requeridos:
-        if campo not in datos:
-            datos[campo] = [] if campo in [
-                "objetivos",
-                "proyectos_similares",
-                "tecnologias_relevantes",
-                "tecnologias_emergentes",
-                "articulos_validacion",
-                "bibliografia",
-            ] else ""
+    for campo in campos_lista:
+        if campo not in datos or not isinstance(datos[campo], list):
+            datos[campo] = []
+
+    for campo in campos_texto:
+        if campo not in datos or not isinstance(datos[campo], str):
+            datos[campo] = ""
+
+    if len(datos["objetivos"]) < 4:
+        datos["objetivos"] += [
+            "Identificar referentes técnicos y académicos relacionados con el proyecto.",
+            "Analizar el contexto nacional e internacional del sector de aplicación.",
+            "Reconocer tecnologías relevantes y emergentes aplicables a la solución propuesta.",
+            "Orientar la toma de decisiones técnicas durante la fase de planeación.",
+        ][len(datos["objetivos"]):]
+
+    if not datos["tecnologias_relevantes"]:
+        datos["tecnologias_relevantes"] = [
+            {
+                "tecnologia": tecnologia,
+                "analisis": (
+                    f"{tecnologia} se considera relevante para el proyecto porque puede aportar capacidades "
+                    "técnicas para el diseño, implementación, validación o escalamiento de la solución propuesta."
+                ),
+                "cita_apa": "Referencia técnica pendiente de verificación.",
+            }
+            for tecnologia in tecnologias_previstas
+        ]
 
     return datos
 
