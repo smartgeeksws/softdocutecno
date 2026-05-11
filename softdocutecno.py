@@ -11,7 +11,7 @@ except ImportError:
     OpenAI = None
 
 try:
-    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.pagesizes import letter, landscape
     from reportlab.pdfgen import canvas
     from reportlab.lib import colors
     from reportlab.lib.utils import ImageReader
@@ -123,6 +123,11 @@ if "ruta_pdf_confidencialidad_generado" not in st.session_state:
 
 if "ruta_firma_talento_tmp" not in st.session_state:
     st.session_state.ruta_firma_talento_tmp = None
+if "datos_cronograma_generado" not in st.session_state:
+    st.session_state.datos_cronograma_generado = None
+
+if "ruta_pdf_cronograma_generado" not in st.session_state:
+    st.session_state.ruta_pdf_cronograma_generado = None
 
 
 # =====================================================
@@ -1576,7 +1581,491 @@ def generar_pdf_confidencialidad(datos: dict) -> str:
 
     return ruta_pdf
 
+# =====================================================
+# CRONOGRAMA DE ACTIVIDADES - FASE DE PLANEACIÓN
+# =====================================================
 
+RUTA_LOGO_TECNOPARQUE = "recursos/logo_tecnoparque.png"
+
+
+def obtener_ruta_logo_tecnoparque() -> str | None:
+    posibles_rutas = [
+        Path(RUTA_LOGO_TECNOPARQUE),
+        Path("recursos/logo_tecnoparque.jpg"),
+        Path("recursos/logo_tecnoparque.jpeg"),
+        Path(RUTA_LOGO_SENA),
+    ]
+
+    for ruta in posibles_rutas:
+        if ruta.exists():
+            return str(ruta)
+
+    return None
+
+
+def normalizar_dia_semana(nombre_dia: str) -> int:
+    mapa = {
+        "lunes": 0,
+        "martes": 1,
+        "miércoles": 2,
+        "miercoles": 2,
+        "jueves": 3,
+        "viernes": 4,
+        "sábado": 5,
+        "sabado": 5,
+        "domingo": 6,
+    }
+    return mapa[nombre_dia.lower().strip()]
+
+
+def obtener_fechas_programadas(fecha_inicio: date, fecha_fin: date, dias_semana: list[str]) -> list[date]:
+    dias_num = [normalizar_dia_semana(dia) for dia in dias_semana]
+    fechas = []
+    actual = fecha_inicio
+
+    while actual <= fecha_fin:
+        if actual.weekday() in dias_num:
+            fechas.append(actual)
+        actual += timedelta(days=1)
+
+    return fechas
+
+
+def dividir_fechas_por_actividad(fechas: list[date], cantidad_actividades: int) -> list[list[date]]:
+    if cantidad_actividades <= 0:
+        return []
+
+    if not fechas:
+        return [[] for _ in range(cantidad_actividades)]
+
+    bloques = []
+    total_fechas = len(fechas)
+
+    for i in range(cantidad_actividades):
+        inicio = round(i * total_fechas / cantidad_actividades)
+        fin = round((i + 1) * total_fechas / cantidad_actividades)
+        bloque = fechas[inicio:fin]
+
+        if not bloque and fechas:
+            bloque = [fechas[min(i, total_fechas - 1)]]
+
+        bloques.append(bloque)
+
+    return bloques
+
+
+def generar_actividades_cronograma_modo_prueba(descripcion_proyecto: str, cantidad_actividades: int) -> list[str]:
+    actividades_base = [
+        "Revisión técnica y conceptual del proyecto",
+        "Identificación de requerimientos técnicos, funcionales y operativos",
+        "Definición de alternativas de diseño y criterios de selección",
+        "Diseño preliminar de la solución propuesta",
+        "Modelado, simulación o representación técnica de la solución",
+        "Validación técnica de componentes, materiales o procesos",
+        "Ajustes del diseño de acuerdo con la validación realizada",
+        "Construcción o integración del prototipo funcional",
+        "Pruebas de funcionamiento y verificación técnica",
+        "Documentación de resultados y consolidación de entregables",
+    ]
+
+    if cantidad_actividades <= len(actividades_base):
+        return actividades_base[:cantidad_actividades]
+
+    actividades = actividades_base[:]
+    while len(actividades) < cantidad_actividades:
+        actividades.append(f"Actividad técnica complementaria {len(actividades) + 1}")
+
+    return actividades
+
+
+def generar_actividades_cronograma_con_chatgpt(
+    descripcion_proyecto: str,
+    cantidad_actividades: int,
+    modelo: str = "gpt-4.1-mini"
+) -> list[str]:
+    if OpenAI is None:
+        raise ImportError("No está instalada la librería openai. Instálala con: pip install openai")
+
+    api_key = obtener_api_key()
+    if not api_key:
+        raise ValueError("No se encontró OPENAI_API_KEY. Configúrala como variable de entorno o en .streamlit/secrets.toml.")
+
+    client = OpenAI(api_key=api_key)
+
+    instrucciones = """
+Eres un experto en formulación, planeación y seguimiento de proyectos de base tecnológica
+en el marco de la Red Tecnoparque SENA.
+
+Debes generar actividades técnicas para un cronograma de planeación tipo diagrama de Gantt.
+Las actividades deben ser claras, verificables, técnicas y orientadas al desarrollo del proyecto.
+No inventes nombres de personas, fechas, códigos ni entidades.
+No incluyas numeración.
+No incluyas fechas.
+No incluyas explicaciones adicionales.
+Responde únicamente en JSON válido.
+"""
+
+    entrada = f"""
+Genera exactamente {cantidad_actividades} actividades técnicas para el cronograma del siguiente proyecto.
+
+Descripción del proyecto:
+{descripcion_proyecto}
+
+Formato obligatorio:
+{{
+  "actividades": [
+    "Actividad 1",
+    "Actividad 2"
+  ]
+}}
+"""
+
+    respuesta = client.responses.create(
+        model=modelo,
+        instructions=instrucciones,
+        input=entrada,
+        temperature=0.35
+    )
+
+    texto = limpiar_respuesta_json(respuesta.output_text)
+
+    try:
+        datos = json.loads(texto)
+        actividades = datos.get("actividades", [])
+    except json.JSONDecodeError:
+        actividades = []
+
+    actividades_limpias = []
+    for actividad in actividades:
+        actividad = str(actividad).strip()
+        if actividad:
+            actividades_limpias.append(actividad)
+
+    if len(actividades_limpias) < cantidad_actividades:
+        actividades_extra = generar_actividades_cronograma_modo_prueba(
+            descripcion_proyecto,
+            cantidad_actividades - len(actividades_limpias)
+        )
+        actividades_limpias.extend(actividades_extra)
+
+    return actividades_limpias[:cantidad_actividades]
+
+
+def nombre_mes_es(fecha: date) -> str:
+    meses = {
+        1: "Enero",
+        2: "Febrero",
+        3: "Marzo",
+        4: "Abril",
+        5: "Mayo",
+        6: "Junio",
+        7: "Julio",
+        8: "Agosto",
+        9: "Septiembre",
+        10: "Octubre",
+        11: "Noviembre",
+        12: "Diciembre",
+    }
+    return meses[fecha.month]
+
+
+def generar_pdf_cronograma(datos: dict) -> str:
+    if canvas is None:
+        raise ImportError("No está instalada reportlab. Instálala con: pip install reportlab")
+
+    Path(CARPETA_SALIDA).mkdir(parents=True, exist_ok=True)
+
+    nombre_archivo = (
+        f"Cronograma_Actividades_"
+        f"{safe_filename(datos.get('codigo_proyecto', 'proyecto'))}_"
+        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    )
+    ruta_pdf = str(Path(CARPETA_SALIDA) / nombre_archivo)
+
+    page_size = landscape(letter)
+    page_width, page_height = page_size
+
+    doc = SimpleDocTemplate(
+        ruta_pdf,
+        pagesize=page_size,
+        rightMargin=0.8 * cm,
+        leftMargin=0.8 * cm,
+        topMargin=2.6 * cm,
+        bottomMargin=1.2 * cm,
+    )
+
+    def encabezado_pie(c, doc):
+        c.saveState()
+
+        ruta_logo = obtener_ruta_logo_tecnoparque()
+        if ruta_logo:
+            try:
+                logo = ImageReader(ruta_logo)
+                c.drawImage(
+                    logo,
+                    0.9 * cm,
+                    page_height - 2.2 * cm,
+                    width=6.2 * cm,
+                    height=1.5 * cm,
+                    preserveAspectRatio=True,
+                    mask="auto",
+                )
+            except Exception:
+                c.setFont("Helvetica-Bold", 14)
+                c.setFillColor(colors.HexColor("#39a935"))
+                c.drawString(1.0 * cm, page_height - 1.4 * cm, "SENA Tecnoparque")
+                c.setFillColor(colors.black)
+        else:
+            c.setFont("Helvetica-Bold", 14)
+            c.setFillColor(colors.HexColor("#39a935"))
+            c.drawString(1.0 * cm, page_height - 1.4 * cm, "SENA Tecnoparque")
+            c.setFillColor(colors.black)
+
+        c.setFont("Helvetica-Bold", 13)
+        c.setFillColor(colors.black)
+        c.drawCentredString(page_width / 2, page_height - 1.3 * cm, "CRONOGRAMA DE ACTIVIDADES")
+
+        c.setFont("Helvetica", 8)
+        c.setFillColor(colors.grey)
+        c.drawCentredString(page_width / 2, 0.55 * cm, "TP-PEPBT V.1")
+
+        c.restoreState()
+
+    estilo_titulo = ParagraphStyle(
+        name="TituloCronograma",
+        fontName="Helvetica-Bold",
+        fontSize=10,
+        leading=12,
+        alignment=TA_CENTER,
+    )
+
+    estilo_normal = ParagraphStyle(
+        name="NormalCronograma",
+        fontName="Helvetica",
+        fontSize=7.2,
+        leading=8.5,
+        alignment=TA_LEFT,
+    )
+
+    estilo_negrita = ParagraphStyle(
+        name="NegritaCronograma",
+        fontName="Helvetica-Bold",
+        fontSize=7.2,
+        leading=8.5,
+        alignment=TA_LEFT,
+    )
+
+    estilo_centro = ParagraphStyle(
+        name="CentroCronograma",
+        fontName="Helvetica-Bold",
+        fontSize=6.5,
+        leading=7.5,
+        alignment=TA_CENTER,
+    )
+
+    historia = []
+
+    # Datos generales
+    datos_generales = [
+        [
+            Paragraph("<b>NOMBRE DEL PROYECTO</b>", estilo_negrita),
+            Paragraph(datos["nombre_proyecto"], estilo_normal),
+            Paragraph("<b>NOMBRE DEL TALENTO</b>", estilo_negrita),
+            Paragraph(datos["nombre_talento"], estilo_normal),
+        ],
+        [
+            Paragraph("<b>CÓDIGO DEL PROYECTO</b>", estilo_negrita),
+            Paragraph(datos["codigo_proyecto"], estilo_normal),
+            Paragraph("<b>EXPERTO</b>", estilo_negrita),
+            Paragraph(datos["nombre_experto"], estilo_normal),
+        ],
+        [
+            Paragraph("<b>LÍNEA</b>", estilo_negrita),
+            Paragraph(datos["linea"], estilo_normal),
+            Paragraph("<b>TIEMPO DE EJECUCIÓN</b>", estilo_negrita),
+            Paragraph(
+                f"{datos['fecha_inicio'].strftime('%d/%m/%Y')} al {datos['fecha_fin'].strftime('%d/%m/%Y')}",
+                estilo_normal,
+            ),
+        ],
+        [
+            Paragraph("<b>DÍAS PROGRAMADOS</b>", estilo_negrita),
+            Paragraph(", ".join(datos["dias_semana"]), estilo_normal),
+            Paragraph("<b>CANTIDAD DE ACTIVIDADES</b>", estilo_negrita),
+            Paragraph(str(datos["cantidad_actividades"]), estilo_normal),
+        ],
+    ]
+
+    tabla_datos = Table(
+        datos_generales,
+        colWidths=[4.0 * cm, 10.0 * cm, 4.0 * cm, 8.5 * cm],
+        rowHeights=[0.65 * cm, 0.55 * cm, 0.55 * cm, 0.55 * cm],
+    )
+
+    tabla_datos.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
+                ("BACKGROUND", (0, 0), (0, -1), colors.whitesmoke),
+                ("BACKGROUND", (2, 0), (2, -1), colors.whitesmoke),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+
+    historia.append(tabla_datos)
+    historia.append(Spacer(1, 0.25 * cm))
+
+    fechas = datos["fechas_programadas"]
+    actividades = datos["actividades"]
+    bloques_fechas = datos["bloques_fechas"]
+
+    # Si hay muchas fechas, se ajusta ancho de columnas
+    ancho_total = page_width - 1.6 * cm
+    ancho_item = 1.0 * cm
+    ancho_desc = 8.0 * cm
+    ancho_fechas_total = ancho_total - ancho_item - ancho_desc
+
+    if fechas:
+        ancho_fecha = max(0.38 * cm, ancho_fechas_total / len(fechas))
+    else:
+        ancho_fecha = 0.6 * cm
+
+    col_widths = [ancho_item, ancho_desc] + [ancho_fecha for _ in fechas]
+
+    # Fila de meses
+    fila_meses = [
+        Paragraph("<b>ITEM</b>", estilo_centro),
+        Paragraph("<b>DESCRIPCIÓN ACTIVIDAD</b>", estilo_centro),
+    ]
+
+    for fecha in fechas:
+        fila_meses.append(Paragraph(f"<b>{nombre_mes_es(fecha)[:3]}</b>", estilo_centro))
+
+    # Fila de días
+    fila_dias = [
+        Paragraph("", estilo_centro),
+        Paragraph("", estilo_centro),
+    ]
+
+    for fecha in fechas:
+        fila_dias.append(Paragraph(str(fecha.day), estilo_centro))
+
+    tabla_data = [fila_meses, fila_dias]
+
+    for idx, actividad in enumerate(actividades, start=1):
+        fechas_actividad = bloques_fechas[idx - 1] if idx - 1 < len(bloques_fechas) else []
+
+        fila = [
+            Paragraph(str(idx), estilo_centro),
+            Paragraph(actividad, estilo_normal),
+        ]
+
+        for fecha in fechas:
+            if fecha in fechas_actividad:
+                fila.append(Paragraph("", estilo_centro))
+            else:
+                fila.append(Paragraph("", estilo_centro))
+
+        tabla_data.append(fila)
+
+    row_heights = [0.45 * cm, 0.45 * cm] + [0.75 * cm for _ in actividades]
+
+    tabla_gantt = Table(
+        tabla_data,
+        colWidths=col_widths,
+        rowHeights=row_heights,
+        repeatRows=2,
+    )
+
+    estilos_tabla = [
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.black),
+        ("BACKGROUND", (0, 0), (-1, 1), colors.whitesmoke),
+        ("BACKGROUND", (0, 0), (1, -1), colors.whitesmoke),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (0, -1), "CENTER"),
+        ("ALIGN", (2, 0), (-1, -1), "CENTER"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]
+
+    verde = colors.HexColor("#39a935")
+
+    for idx_actividad, fechas_actividad in enumerate(bloques_fechas, start=2):
+        fila_tabla = idx_actividad
+        for idx_fecha, fecha in enumerate(fechas, start=2):
+            if fecha in fechas_actividad:
+                estilos_tabla.append(("BACKGROUND", (idx_fecha, fila_tabla), (idx_fecha, fila_tabla), verde))
+
+    tabla_gantt.setStyle(TableStyle(estilos_tabla))
+
+    historia.append(tabla_gantt)
+    historia.append(Spacer(1, 0.25 * cm))
+
+    # Tabla de entregables
+    entregables_data = [
+        [
+            Paragraph("<b>SEMANA / ACTIVIDAD</b>", estilo_centro),
+            Paragraph("<b>ENTREGABLE</b>", estilo_centro),
+        ]
+    ]
+
+    for idx, actividad in enumerate(actividades, start=1):
+        fechas_actividad = bloques_fechas[idx - 1] if idx - 1 < len(bloques_fechas) else []
+        if fechas_actividad:
+            periodo = f"{fechas_actividad[0].strftime('%d/%m/%Y')} al {fechas_actividad[-1].strftime('%d/%m/%Y')}"
+        else:
+            periodo = "Sin fecha asignada"
+
+        entregables_data.append(
+            [
+                Paragraph(str(idx), estilo_centro),
+                Paragraph(f"{actividad} — {periodo}", estilo_normal),
+            ]
+        )
+
+    tabla_entregables = Table(
+        entregables_data,
+        colWidths=[3.0 * cm, 23.5 * cm],
+    )
+
+    tabla_entregables.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.black),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+
+    historia.append(tabla_entregables)
+
+    doc.build(
+        historia,
+        onFirstPage=encabezado_pie,
+        onLaterPages=encabezado_pie,
+    )
+
+    datos_json = dict(datos)
+    datos_json["fecha_inicio"] = datos["fecha_inicio"].strftime("%d/%m/%Y")
+    datos_json["fecha_fin"] = datos["fecha_fin"].strftime("%d/%m/%Y")
+    datos_json["fechas_programadas"] = [f.strftime("%d/%m/%Y") for f in datos["fechas_programadas"]]
+    datos_json["bloques_fechas"] = [
+        [f.strftime("%d/%m/%Y") for f in bloque]
+        for bloque in datos["bloques_fechas"]
+    ]
+    datos_json["ruta_pdf"] = ruta_pdf
+
+    guardar_datos_json(datos_json, ruta="datos_cronograma_actividades.json")
+
+    return ruta_pdf
 # =====================================================
 # SIDEBAR DE CONFIGURACIÓN
 # =====================================================
@@ -2116,7 +2605,255 @@ if st.session_state.fase_seleccionada == "inicio":
                 )
 
 elif st.session_state.fase_seleccionada == "planeacion":
-    st.warning("Este módulo se desarrollará después de validar los documentos de la fase de inicio.")
+    st.markdown("---")
+    st.subheader("Documentos de la fase de planeación")
+
+    plan_col1, plan_col2, plan_col3 = st.columns(3)
+
+    with plan_col1:
+        if st.button("📊 Cronograma de actividades"):
+            seleccionar_documento("cronograma")
+
+    with plan_col2:
+        if st.button("📋 Plan de trabajo"):
+            seleccionar_documento("plan_trabajo")
+
+    with plan_col3:
+        if st.button("📦 Entregables"):
+            seleccionar_documento("entregables")
+
+    if st.session_state.documento_seleccionado is None:
+        st.info("Selecciona un documento de planeación para continuar.")
+        st.stop()
+
+    if st.session_state.documento_seleccionado != "cronograma":
+        st.warning("Este módulo estará disponible en una siguiente versión. Por ahora está habilitado el cronograma de actividades.")
+        st.stop()
+
+    st.markdown("---")
+    st.subheader("Formulario para Cronograma de Actividades")
+
+    st.info(
+        "Este módulo genera un cronograma horizontal tipo diagrama de Gantt. "
+        "Las actividades se generan con la API de OpenAI de acuerdo con la descripción del proyecto."
+    )
+
+    with st.form("form_cronograma"):
+        col_a, col_b = st.columns(2)
+
+        with col_a:
+            codigo_proyecto = st.text_input(
+                "Código del proyecto",
+                placeholder="Ejemplo: P2024-143440-16602"
+            )
+
+            nombre_proyecto = st.text_area(
+                "Nombre del proyecto",
+                placeholder='Ejemplo: Diseño de un "Precipitómetro" de bajo costo para determinación de valores reales de infiltración de suelos',
+                height=90
+            )
+
+            nombre_talento = st.text_input(
+                "Nombre del talento",
+                placeholder="Nombre completo del talento"
+            )
+
+            nombre_experto = st.text_input(
+                "Nombre del experto",
+                placeholder="Nombre completo del experto"
+            )
+
+        with col_b:
+            linea = st.text_input(
+                "Línea",
+                placeholder="Ejemplo: Diseño de productos"
+            )
+
+            cantidad_actividades = st.number_input(
+                "Cantidad de actividades",
+                min_value=3,
+                max_value=20,
+                value=7,
+                step=1
+            )
+
+            fecha_inicio = st.date_input(
+                "Fecha de inicio",
+                value=date.today()
+            )
+
+            fecha_fin = st.date_input(
+                "Fecha de finalización",
+                value=date.today() + timedelta(days=60)
+            )
+
+            dias_semana = st.multiselect(
+                "Día(s) de la semana para programar actividades",
+                options=["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"],
+                default=["Sábado", "Domingo"]
+            )
+
+        descripcion_proyecto = st.text_area(
+            "Describe el proyecto",
+            placeholder="Describe la necesidad, la solución propuesta, los componentes técnicos, el prototipo o resultado esperado.",
+            height=160
+        )
+
+        generar_cronograma = st.form_submit_button(
+            "Generar cronograma de actividades"
+        )
+
+    if generar_cronograma:
+        errores = []
+
+        campos_obligatorios = {
+            "Código del proyecto": codigo_proyecto,
+            "Nombre del proyecto": nombre_proyecto,
+            "Nombre del talento": nombre_talento,
+            "Nombre del experto": nombre_experto,
+            "Línea": linea,
+            "Descripción del proyecto": descripcion_proyecto,
+        }
+
+        for campo, valor in campos_obligatorios.items():
+            if not str(valor).strip():
+                errores.append(campo)
+
+        if not dias_semana:
+            errores.append("Día(s) de la semana")
+
+        if fecha_fin < fecha_inicio:
+            errores.append("La fecha de finalización no puede ser anterior a la fecha de inicio")
+
+        if errores:
+            st.error("Revisa los siguientes campos: " + ", ".join(errores))
+            st.stop()
+
+        fechas_programadas = obtener_fechas_programadas(
+            fecha_inicio,
+            fecha_fin,
+            dias_semana
+        )
+
+        if not fechas_programadas:
+            st.error("No se encontraron fechas programadas con los días seleccionados dentro del rango indicado.")
+            st.stop()
+
+        with st.spinner("Generando actividades técnicas con IA..."):
+            try:
+                if modo_prueba:
+                    actividades = generar_actividades_cronograma_modo_prueba(
+                        descripcion_proyecto,
+                        int(cantidad_actividades)
+                    )
+                else:
+                    actividades = generar_actividades_cronograma_con_chatgpt(
+                        descripcion_proyecto,
+                        int(cantidad_actividades),
+                        modelo_openai
+                    )
+            except Exception as e:
+                st.error(f"No se pudieron generar las actividades: {e}")
+                st.stop()
+
+        bloques_fechas = dividir_fechas_por_actividad(
+            fechas_programadas,
+            int(cantidad_actividades)
+        )
+
+        datos_cronograma = {
+            "tipo_documento": "Cronograma de actividades",
+            "codigo_proyecto": codigo_proyecto,
+            "nombre_proyecto": nombre_proyecto,
+            "nombre_talento": nombre_talento,
+            "nombre_experto": nombre_experto,
+            "linea": linea,
+            "cantidad_actividades": int(cantidad_actividades),
+            "fecha_inicio": fecha_inicio,
+            "fecha_fin": fecha_fin,
+            "dias_semana": dias_semana,
+            "descripcion_proyecto": descripcion_proyecto,
+            "actividades": actividades,
+            "fechas_programadas": fechas_programadas,
+            "bloques_fechas": bloques_fechas,
+            "modo_generacion": "Prueba local" if modo_prueba else "ChatGPT API",
+        }
+
+        st.session_state.datos_cronograma_generado = datos_cronograma
+        st.session_state.ruta_pdf_cronograma_generado = None
+
+        st.success("Cronograma generado correctamente. Ahora puedes revisar y generar el PDF.")
+
+    if st.session_state.datos_cronograma_generado:
+        datos_cronograma = st.session_state.datos_cronograma_generado
+
+        st.markdown("## Resumen para validación")
+
+        st.write("**Modo de generación:**", datos_cronograma["modo_generacion"])
+        st.write("**Código del proyecto:**", datos_cronograma["codigo_proyecto"])
+        st.write("**Nombre del proyecto:**", datos_cronograma["nombre_proyecto"])
+        st.write("**Talento:**", datos_cronograma["nombre_talento"])
+        st.write("**Experto:**", datos_cronograma["nombre_experto"])
+        st.write("**Línea:**", datos_cronograma["linea"])
+        st.write(
+            "**Periodo:**",
+            f'{datos_cronograma["fecha_inicio"].strftime("%d/%m/%Y")} al {datos_cronograma["fecha_fin"].strftime("%d/%m/%Y")}'
+        )
+        st.write("**Días programados:**", ", ".join(datos_cronograma["dias_semana"]))
+
+        st.markdown("### Actividades generadas")
+        for idx, actividad in enumerate(datos_cronograma["actividades"], start=1):
+            fechas_actividad = datos_cronograma["bloques_fechas"][idx - 1]
+            if fechas_actividad:
+                periodo = f"{fechas_actividad[0].strftime('%d/%m/%Y')} al {fechas_actividad[-1].strftime('%d/%m/%Y')}"
+            else:
+                periodo = "Sin fecha asignada"
+
+            st.write(f"**{idx}.** {actividad} — {periodo}")
+
+        col_json, col_pdf = st.columns(2)
+
+        with col_json:
+            datos_json_descarga = dict(datos_cronograma)
+            datos_json_descarga["fecha_inicio"] = datos_json_descarga["fecha_inicio"].strftime("%d/%m/%Y")
+            datos_json_descarga["fecha_fin"] = datos_json_descarga["fecha_fin"].strftime("%d/%m/%Y")
+            datos_json_descarga["fechas_programadas"] = [
+                f.strftime("%d/%m/%Y") for f in datos_json_descarga["fechas_programadas"]
+            ]
+            datos_json_descarga["bloques_fechas"] = [
+                [f.strftime("%d/%m/%Y") for f in bloque]
+                for bloque in datos_json_descarga["bloques_fechas"]
+            ]
+
+            st.download_button(
+                label="Descargar datos en JSON",
+                data=json.dumps(datos_json_descarga, ensure_ascii=False, indent=4),
+                file_name="datos_cronograma_actividades.json",
+                mime="application/json"
+            )
+
+        with col_pdf:
+            if st.button("📄 Generar PDF del cronograma"):
+                try:
+                    ruta_pdf = generar_pdf_cronograma(datos_cronograma)
+                    st.session_state.ruta_pdf_cronograma_generado = ruta_pdf
+                    st.success(f"PDF generado correctamente: {ruta_pdf}")
+                except Exception as e:
+                    st.error(f"No se pudo generar el PDF: {e}")
+
+        if (
+            st.session_state.ruta_pdf_cronograma_generado
+            and Path(st.session_state.ruta_pdf_cronograma_generado).exists()
+        ):
+            ruta_pdf = st.session_state.ruta_pdf_cronograma_generado
+
+            with open(ruta_pdf, "rb") as f:
+                st.download_button(
+                    label="⬇️ Descargar PDF del cronograma",
+                    data=f,
+                    file_name=Path(ruta_pdf).name,
+                    mime="application/pdf"
+                )
 
 elif st.session_state.fase_seleccionada == "ejecucion":
     st.warning("Este módulo se desarrollará después de validar los documentos de la fase de inicio.")
