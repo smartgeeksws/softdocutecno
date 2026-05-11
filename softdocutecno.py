@@ -3213,402 +3213,412 @@ elif st.session_state.fase_seleccionada == "planeacion":
         st.info("Selecciona un documento de planeación para continuar.")
         st.stop()
 
-if st.session_state.documento_seleccionado == "estado_arte":
-    st.markdown("---")
-    st.subheader("Formulario para Estado del Arte")
+    # =====================================================
+    # MÓDULO ESTADO DEL ARTE
+    # =====================================================
+    if st.session_state.documento_seleccionado == "estado_arte":
+        st.markdown("---")
+        st.subheader("Formulario para Estado del Arte")
 
-    st.info(
-        "Este módulo genera un documento académico e investigativo con búsqueda de proyectos similares, "
-        "tecnologías relevantes, artículos de validación y referencias en APA 7."
-    )
-
-    with st.form("form_estado_arte"):
-        col_a, col_b = st.columns(2)
-
-        with col_a:
-            codigo_proyecto = st.text_input(
-                "Código del proyecto",
-                placeholder="Ejemplo: P2024-143440-16600"
-            )
-
-            nombre_proyecto = st.text_area(
-                "Nombre del proyecto",
-                placeholder="Título oficial de la iniciativa",
-                height=80
-            )
-
-        with col_b:
-            fecha_documento = st.date_input(
-                "Fecha del documento",
-                value=date.today()
-            )
-
-            tecnologias_previstas_texto = st.text_area(
-                "Tecnologías previstas",
-                placeholder="Ejemplo: Inteligencia artificial, animación 3D, códigos QR, realidad aumentada",
-                height=80
-            )
-
-        descripcion_proyecto = st.text_area(
-            "Háblame sobre el proyecto",
-            placeholder="Describe de qué trata, quién es el talento detrás, cuál es el origen de la iniciativa y qué la hace innovadora.",
-            height=220
+        st.info(
+            "Este módulo genera un documento académico e investigativo con búsqueda de proyectos similares, "
+            "tecnologías relevantes, artículos de validación y referencias en APA 7."
         )
 
-        generar_estado_arte = st.form_submit_button("Generar Estado del Arte")
+        with st.form("form_estado_arte"):
+            col_a, col_b = st.columns(2)
 
-    if generar_estado_arte:
-        errores = []
-
-        campos_obligatorios = {
-            "Código del proyecto": codigo_proyecto,
-            "Nombre del proyecto": nombre_proyecto,
-            "Descripción detallada": descripcion_proyecto,
-            "Tecnologías previstas": tecnologias_previstas_texto,
-        }
-
-        for campo, valor in campos_obligatorios.items():
-            if not str(valor).strip():
-                errores.append(campo)
-
-        if errores:
-            st.error("Faltan campos obligatorios: " + ", ".join(errores))
-            st.stop()
-
-        tecnologias_previstas = limpiar_lista_tecnologias(tecnologias_previstas_texto)
-
-        with st.spinner("Generando Estado del Arte con búsqueda académica y referencias APA 7..."):
-            try:
-                if modo_prueba:
-                    contenido_estado_arte = generar_estado_arte_modo_prueba(
-                        nombre_proyecto,
-                        codigo_proyecto,
-                        descripcion_proyecto,
-                        tecnologias_previstas,
-                    )
-                else:
-                    contenido_estado_arte = generar_estado_arte_con_chatgpt(
-                        nombre_proyecto,
-                        codigo_proyecto,
-                        descripcion_proyecto,
-                        tecnologias_previstas,
-                        modelo_openai,
-                    )
-            except Exception as e:
-                st.error(f"No se pudo generar el Estado del Arte: {e}")
-                st.stop()
-
-        datos_estado_arte = {
-            "tipo_documento": "Estado del Arte",
-            "codigo_proyecto": codigo_proyecto,
-            "nombre_proyecto": nombre_proyecto,
-            "fecha_documento": fecha_documento,
-            "descripcion_proyecto": descripcion_proyecto,
-            "tecnologias_previstas": tecnologias_previstas,
-            "contenido_estado_arte": contenido_estado_arte,
-            "modo_generacion": "Prueba local" if modo_prueba else "ChatGPT API con búsqueda web",
-        }
-
-        st.session_state.datos_estado_arte_generado = datos_estado_arte
-        st.session_state.ruta_pdf_estado_arte_generado = None
-
-        st.success("Estado del Arte generado correctamente. Ahora puedes revisar y generar el PDF.")
-
-    if st.session_state.datos_estado_arte_generado:
-        datos_estado_arte = st.session_state.datos_estado_arte_generado
-        contenido = datos_estado_arte["contenido_estado_arte"]
-
-        st.markdown("## Resumen para validación")
-
-        st.write("**Modo de generación:**", datos_estado_arte["modo_generacion"])
-        st.write("**Código del proyecto:**", datos_estado_arte["codigo_proyecto"])
-        st.write("**Nombre del proyecto:**", datos_estado_arte["nombre_proyecto"])
-        st.write("**Fecha:**", datos_estado_arte["fecha_documento"].strftime("%d/%m/%Y"))
-        st.write("**Tecnologías previstas:**", ", ".join(datos_estado_arte["tecnologias_previstas"]))
-
-        st.markdown("### Introducción")
-        st.write(contenido.get("introduccion", ""))
-
-        st.markdown("### Objetivos")
-        for objetivo in contenido.get("objetivos", []):
-            st.write(f"- {objetivo}")
-
-        st.markdown("### Proyectos similares")
-        for item in contenido.get("proyectos_similares", []):
-            st.write(f"**{item.get('numero', '')}. {item.get('nombre', '')}**")
-            st.write(item.get("enlace", ""))
-
-        st.markdown("### Tecnologías emergentes")
-        for item in contenido.get("tecnologias_emergentes", []):
-            st.write(f"**{item.get('tecnologia', '')}:** {item.get('analisis', '')}")
-
-        col_json, col_pdf = st.columns(2)
-
-        with col_json:
-            datos_json_descarga = dict(datos_estado_arte)
-            if isinstance(datos_json_descarga.get("fecha_documento"), date):
-                datos_json_descarga["fecha_documento"] = datos_json_descarga["fecha_documento"].strftime("%d/%m/%Y")
-
-            st.download_button(
-                label="Descargar datos en JSON",
-                data=json.dumps(datos_json_descarga, ensure_ascii=False, indent=4),
-                file_name="datos_estado_arte.json",
-                mime="application/json"
-            )
-
-        with col_pdf:
-            if st.button("📄 Generar PDF del Estado del Arte"):
-                try:
-                    ruta_pdf = generar_pdf_estado_arte(datos_estado_arte)
-                    st.session_state.ruta_pdf_estado_arte_generado = ruta_pdf
-                    st.success(f"PDF generado correctamente: {ruta_pdf}")
-                except Exception as e:
-                    st.error(f"No se pudo generar el PDF: {e}")
-
-        if (
-            st.session_state.ruta_pdf_estado_arte_generado
-            and Path(st.session_state.ruta_pdf_estado_arte_generado).exists()
-        ):
-            ruta_pdf = st.session_state.ruta_pdf_estado_arte_generado
-
-            with open(ruta_pdf, "rb") as f:
-                st.download_button(
-                    label="⬇️ Descargar PDF del Estado del Arte",
-                    data=f,
-                    file_name=Path(ruta_pdf).name,
-                    mime="application/pdf"
+            with col_a:
+                codigo_proyecto = st.text_input(
+                    "Código del proyecto",
+                    placeholder="Ejemplo: P2024-143440-16600"
                 )
 
-    st.stop()
+                nombre_proyecto = st.text_area(
+                    "Nombre del proyecto",
+                    placeholder="Título oficial de la iniciativa",
+                    height=80
+                )
 
-    if st.session_state.documento_seleccionado != "cronograma":
-        st.warning("Este módulo estará disponible en una siguiente versión. Por ahora está habilitado el cronograma de actividades.")
+            with col_b:
+                fecha_documento = st.date_input(
+                    "Fecha del documento",
+                    value=date.today()
+                )
+
+                tecnologias_previstas_texto = st.text_area(
+                    "Tecnologías previstas",
+                    placeholder="Ejemplo: Inteligencia artificial, animación 3D, códigos QR, realidad aumentada",
+                    height=80
+                )
+
+            descripcion_proyecto = st.text_area(
+                "Háblame sobre el proyecto",
+                placeholder="Describe de qué trata, quién es el talento detrás, cuál es el origen de la iniciativa y qué la hace innovadora.",
+                height=220
+            )
+
+            generar_estado_arte = st.form_submit_button("Generar Estado del Arte")
+
+        if generar_estado_arte:
+            errores = []
+
+            campos_obligatorios = {
+                "Código del proyecto": codigo_proyecto,
+                "Nombre del proyecto": nombre_proyecto,
+                "Descripción detallada": descripcion_proyecto,
+                "Tecnologías previstas": tecnologias_previstas_texto,
+            }
+
+            for campo, valor in campos_obligatorios.items():
+                if not str(valor).strip():
+                    errores.append(campo)
+
+            if errores:
+                st.error("Faltan campos obligatorios: " + ", ".join(errores))
+                st.stop()
+
+            tecnologias_previstas = limpiar_lista_tecnologias(tecnologias_previstas_texto)
+
+            with st.spinner("Generando Estado del Arte con búsqueda académica y referencias APA 7..."):
+                try:
+                    if modo_prueba:
+                        contenido_estado_arte = generar_estado_arte_modo_prueba(
+                            nombre_proyecto,
+                            codigo_proyecto,
+                            descripcion_proyecto,
+                            tecnologias_previstas,
+                        )
+                    else:
+                        contenido_estado_arte = generar_estado_arte_con_chatgpt(
+                            nombre_proyecto,
+                            codigo_proyecto,
+                            descripcion_proyecto,
+                            tecnologias_previstas,
+                            modelo_openai,
+                        )
+                except Exception as e:
+                    st.error(f"No se pudo generar el Estado del Arte: {e}")
+                    st.stop()
+
+            datos_estado_arte = {
+                "tipo_documento": "Estado del Arte",
+                "codigo_proyecto": codigo_proyecto,
+                "nombre_proyecto": nombre_proyecto,
+                "fecha_documento": fecha_documento,
+                "descripcion_proyecto": descripcion_proyecto,
+                "tecnologias_previstas": tecnologias_previstas,
+                "contenido_estado_arte": contenido_estado_arte,
+                "modo_generacion": "Prueba local" if modo_prueba else "ChatGPT API con búsqueda web",
+            }
+
+            st.session_state.datos_estado_arte_generado = datos_estado_arte
+            st.session_state.ruta_pdf_estado_arte_generado = None
+
+            st.success("Estado del Arte generado correctamente. Ahora puedes revisar y generar el PDF.")
+
+        if st.session_state.datos_estado_arte_generado:
+            datos_estado_arte = st.session_state.datos_estado_arte_generado
+            contenido = datos_estado_arte["contenido_estado_arte"]
+
+            st.markdown("## Resumen para validación")
+
+            st.write("**Modo de generación:**", datos_estado_arte["modo_generacion"])
+            st.write("**Código del proyecto:**", datos_estado_arte["codigo_proyecto"])
+            st.write("**Nombre del proyecto:**", datos_estado_arte["nombre_proyecto"])
+            st.write("**Fecha:**", datos_estado_arte["fecha_documento"].strftime("%d/%m/%Y"))
+            st.write("**Tecnologías previstas:**", ", ".join(datos_estado_arte["tecnologias_previstas"]))
+
+            st.markdown("### Introducción")
+            st.write(contenido.get("introduccion", ""))
+
+            st.markdown("### Objetivos")
+            for objetivo in contenido.get("objetivos", []):
+                st.write(f"- {objetivo}")
+
+            st.markdown("### Proyectos similares")
+            for item in contenido.get("proyectos_similares", []):
+                st.write(f"**{item.get('numero', '')}. {item.get('nombre', '')}**")
+                st.write(item.get("enlace", ""))
+
+            st.markdown("### Tecnologías emergentes")
+            for item in contenido.get("tecnologias_emergentes", []):
+                st.write(f"**{item.get('tecnologia', '')}:** {item.get('analisis', '')}")
+
+            col_json, col_pdf = st.columns(2)
+
+            with col_json:
+                datos_json_descarga = dict(datos_estado_arte)
+                if isinstance(datos_json_descarga.get("fecha_documento"), date):
+                    datos_json_descarga["fecha_documento"] = datos_json_descarga["fecha_documento"].strftime("%d/%m/%Y")
+
+                st.download_button(
+                    label="Descargar datos en JSON",
+                    data=json.dumps(datos_json_descarga, ensure_ascii=False, indent=4),
+                    file_name="datos_estado_arte.json",
+                    mime="application/json"
+                )
+
+            with col_pdf:
+                if st.button("📄 Generar PDF del Estado del Arte"):
+                    try:
+                        ruta_pdf = generar_pdf_estado_arte(datos_estado_arte)
+                        st.session_state.ruta_pdf_estado_arte_generado = ruta_pdf
+                        st.success(f"PDF generado correctamente: {ruta_pdf}")
+                    except Exception as e:
+                        st.error(f"No se pudo generar el PDF: {e}")
+
+            if (
+                st.session_state.ruta_pdf_estado_arte_generado
+                and Path(st.session_state.ruta_pdf_estado_arte_generado).exists()
+            ):
+                ruta_pdf = st.session_state.ruta_pdf_estado_arte_generado
+
+                with open(ruta_pdf, "rb") as f:
+                    st.download_button(
+                        label="⬇️ Descargar PDF del Estado del Arte",
+                        data=f,
+                        file_name=Path(ruta_pdf).name,
+                        mime="application/pdf"
+                    )
+
         st.stop()
 
-    st.markdown("---")
-    st.subheader("Formulario para Cronograma de Actividades")
+    # =====================================================
+    # MÓDULO CRONOGRAMA DE ACTIVIDADES
+    # =====================================================
+    if st.session_state.documento_seleccionado == "cronograma":
+        st.markdown("---")
+        st.subheader("Formulario para Cronograma de Actividades")
 
-    st.info(
-        "Este módulo genera un cronograma horizontal tipo diagrama de Gantt. "
-        "Las actividades se generan con la API de OpenAI de acuerdo con la descripción del proyecto."
-    )
-
-    with st.form("form_cronograma"):
-        col_a, col_b = st.columns(2)
-
-        with col_a:
-            codigo_proyecto = st.text_input(
-                "Código del proyecto",
-                placeholder="Ejemplo: P2024-143440-16602"
-            )
-
-            nombre_proyecto = st.text_area(
-                "Nombre del proyecto",
-                placeholder='Ejemplo: Diseño de un "Precipitómetro" de bajo costo para determinación de valores reales de infiltración de suelos',
-                height=90
-            )
-
-            nombre_talento = st.text_input(
-                "Nombre del talento",
-                placeholder="Nombre completo del talento"
-            )
-
-            nombre_experto = st.text_input(
-                "Nombre del experto",
-                placeholder="Nombre completo del experto"
-            )
-
-        with col_b:
-            linea = st.text_input(
-                "Línea",
-                placeholder="Ejemplo: Diseño de productos"
-            )
-
-            cantidad_actividades = st.number_input(
-                "Cantidad de actividades",
-                min_value=3,
-                max_value=20,
-                value=7,
-                step=1
-            )
-
-            fecha_inicio = st.date_input(
-                "Fecha de inicio",
-                value=date.today()
-            )
-
-            fecha_fin = st.date_input(
-                "Fecha de finalización",
-                value=date.today() + timedelta(days=60)
-            )
-
-            dias_semana = st.multiselect(
-                "Día(s) de la semana para programar actividades",
-                options=["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"],
-                default=["Sábado", "Domingo"]
-            )
-
-        descripcion_proyecto = st.text_area(
-            "Describe el proyecto",
-            placeholder="Describe la necesidad, la solución propuesta, los componentes técnicos, el prototipo o resultado esperado.",
-            height=160
+        st.info(
+            "Este módulo genera un cronograma horizontal tipo diagrama de Gantt. "
+            "Las actividades se generan con la API de OpenAI de acuerdo con la descripción del proyecto."
         )
 
-        generar_cronograma = st.form_submit_button(
-            "Generar cronograma de actividades"
-        )
+        with st.form("form_cronograma"):
+            col_a, col_b = st.columns(2)
 
-    if generar_cronograma:
-        errores = []
+            with col_a:
+                codigo_proyecto = st.text_input(
+                    "Código del proyecto",
+                    placeholder="Ejemplo: P2024-143440-16602"
+                )
 
-        campos_obligatorios = {
-            "Código del proyecto": codigo_proyecto,
-            "Nombre del proyecto": nombre_proyecto,
-            "Nombre del talento": nombre_talento,
-            "Nombre del experto": nombre_experto,
-            "Línea": linea,
-            "Descripción del proyecto": descripcion_proyecto,
-        }
+                nombre_proyecto = st.text_area(
+                    "Nombre del proyecto",
+                    placeholder='Ejemplo: Diseño de un "Precipitómetro" de bajo costo para determinación de valores reales de infiltración de suelos',
+                    height=90
+                )
 
-        for campo, valor in campos_obligatorios.items():
-            if not str(valor).strip():
-                errores.append(campo)
+                nombre_talento = st.text_input(
+                    "Nombre del talento",
+                    placeholder="Nombre completo del talento"
+                )
 
-        if not dias_semana:
-            errores.append("Día(s) de la semana")
+                nombre_experto = st.text_input(
+                    "Nombre del experto",
+                    placeholder="Nombre completo del experto"
+                )
 
-        if fecha_fin < fecha_inicio:
-            errores.append("La fecha de finalización no puede ser anterior a la fecha de inicio")
+            with col_b:
+                linea = st.text_input(
+                    "Línea",
+                    placeholder="Ejemplo: Diseño de productos"
+                )
 
-        if errores:
-            st.error("Revisa los siguientes campos: " + ", ".join(errores))
-            st.stop()
+                cantidad_actividades = st.number_input(
+                    "Cantidad de actividades",
+                    min_value=3,
+                    max_value=20,
+                    value=7,
+                    step=1
+                )
 
-        fechas_programadas = obtener_fechas_programadas(
-            fecha_inicio,
-            fecha_fin,
-            dias_semana
-        )
+                fecha_inicio = st.date_input(
+                    "Fecha de inicio",
+                    value=date.today()
+                )
 
-        if not fechas_programadas:
-            st.error("No se encontraron fechas programadas con los días seleccionados dentro del rango indicado.")
-            st.stop()
+                fecha_fin = st.date_input(
+                    "Fecha de finalización",
+                    value=date.today() + timedelta(days=60)
+                )
 
-        with st.spinner("Generando actividades técnicas con IA..."):
-            try:
-                if modo_prueba:
-                    actividades = generar_actividades_cronograma_modo_prueba(
-                        descripcion_proyecto,
-                        int(cantidad_actividades)
-                    )
-                else:
-                    actividades = generar_actividades_cronograma_con_chatgpt(
-                        descripcion_proyecto,
-                        int(cantidad_actividades),
-                        modelo_openai
-                    )
-            except Exception as e:
-                st.error(f"No se pudieron generar las actividades: {e}")
+                dias_semana = st.multiselect(
+                    "Día(s) de la semana para programar actividades",
+                    options=["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"],
+                    default=["Sábado", "Domingo"]
+                )
+
+            descripcion_proyecto = st.text_area(
+                "Describe el proyecto",
+                placeholder="Describe la necesidad, la solución propuesta, los componentes técnicos, el prototipo o resultado esperado.",
+                height=160
+            )
+
+            generar_cronograma = st.form_submit_button(
+                "Generar cronograma de actividades"
+            )
+
+        if generar_cronograma:
+            errores = []
+
+            campos_obligatorios = {
+                "Código del proyecto": codigo_proyecto,
+                "Nombre del proyecto": nombre_proyecto,
+                "Nombre del talento": nombre_talento,
+                "Nombre del experto": nombre_experto,
+                "Línea": linea,
+                "Descripción del proyecto": descripcion_proyecto,
+            }
+
+            for campo, valor in campos_obligatorios.items():
+                if not str(valor).strip():
+                    errores.append(campo)
+
+            if not dias_semana:
+                errores.append("Día(s) de la semana")
+
+            if fecha_fin < fecha_inicio:
+                errores.append("La fecha de finalización no puede ser anterior a la fecha de inicio")
+
+            if errores:
+                st.error("Revisa los siguientes campos: " + ", ".join(errores))
                 st.stop()
 
-        bloques_fechas = dividir_fechas_por_actividad(
-            fechas_programadas,
-            int(cantidad_actividades)
-        )
-
-        datos_cronograma = {
-            "tipo_documento": "Cronograma de actividades",
-            "codigo_proyecto": codigo_proyecto,
-            "nombre_proyecto": nombre_proyecto,
-            "nombre_talento": nombre_talento,
-            "nombre_experto": nombre_experto,
-            "linea": linea,
-            "cantidad_actividades": int(cantidad_actividades),
-            "fecha_inicio": fecha_inicio,
-            "fecha_fin": fecha_fin,
-            "dias_semana": dias_semana,
-            "descripcion_proyecto": descripcion_proyecto,
-            "actividades": actividades,
-            "fechas_programadas": fechas_programadas,
-            "bloques_fechas": bloques_fechas,
-            "modo_generacion": "Prueba local" if modo_prueba else "ChatGPT API",
-        }
-
-        st.session_state.datos_cronograma_generado = datos_cronograma
-        st.session_state.ruta_pdf_cronograma_generado = None
-
-        st.success("Cronograma generado correctamente. Ahora puedes revisar y generar el PDF.")
-
-    if st.session_state.datos_cronograma_generado:
-        datos_cronograma = st.session_state.datos_cronograma_generado
-
-        st.markdown("## Resumen para validación")
-
-        st.write("**Modo de generación:**", datos_cronograma["modo_generacion"])
-        st.write("**Código del proyecto:**", datos_cronograma["codigo_proyecto"])
-        st.write("**Nombre del proyecto:**", datos_cronograma["nombre_proyecto"])
-        st.write("**Talento:**", datos_cronograma["nombre_talento"])
-        st.write("**Experto:**", datos_cronograma["nombre_experto"])
-        st.write("**Línea:**", datos_cronograma["linea"])
-        st.write(
-            "**Periodo:**",
-            f'{datos_cronograma["fecha_inicio"].strftime("%d/%m/%Y")} al {datos_cronograma["fecha_fin"].strftime("%d/%m/%Y")}'
-        )
-        st.write("**Días programados:**", ", ".join(datos_cronograma["dias_semana"]))
-
-        st.markdown("### Actividades generadas")
-        for idx, actividad in enumerate(datos_cronograma["actividades"], start=1):
-            fechas_actividad = datos_cronograma["bloques_fechas"][idx - 1]
-            if fechas_actividad:
-                periodo = f"{fechas_actividad[0].strftime('%d/%m/%Y')} al {fechas_actividad[-1].strftime('%d/%m/%Y')}"
-            else:
-                periodo = "Sin fecha asignada"
-
-            st.write(f"**{idx}.** {actividad} — {periodo}")
-
-        col_json, col_pdf = st.columns(2)
-
-        with col_json:
-            datos_json_descarga = dict(datos_cronograma)
-            datos_json_descarga["fecha_inicio"] = datos_json_descarga["fecha_inicio"].strftime("%d/%m/%Y")
-            datos_json_descarga["fecha_fin"] = datos_json_descarga["fecha_fin"].strftime("%d/%m/%Y")
-            datos_json_descarga["fechas_programadas"] = [
-                f.strftime("%d/%m/%Y") for f in datos_json_descarga["fechas_programadas"]
-            ]
-            datos_json_descarga["bloques_fechas"] = [
-                [f.strftime("%d/%m/%Y") for f in bloque]
-                for bloque in datos_json_descarga["bloques_fechas"]
-            ]
-
-            st.download_button(
-                label="Descargar datos en JSON",
-                data=json.dumps(datos_json_descarga, ensure_ascii=False, indent=4),
-                file_name="datos_cronograma_actividades.json",
-                mime="application/json"
+            fechas_programadas = obtener_fechas_programadas(
+                fecha_inicio,
+                fecha_fin,
+                dias_semana
             )
 
-        with col_pdf:
-            if st.button("📄 Generar PDF del cronograma"):
+            if not fechas_programadas:
+                st.error("No se encontraron fechas programadas con los días seleccionados dentro del rango indicado.")
+                st.stop()
+
+            with st.spinner("Generando actividades técnicas con IA..."):
                 try:
-                    ruta_pdf = generar_pdf_cronograma(datos_cronograma)
-                    st.session_state.ruta_pdf_cronograma_generado = ruta_pdf
-                    st.success(f"PDF generado correctamente: {ruta_pdf}")
+                    if modo_prueba:
+                        actividades = generar_actividades_cronograma_modo_prueba(
+                            descripcion_proyecto,
+                            int(cantidad_actividades)
+                        )
+                    else:
+                        actividades = generar_actividades_cronograma_con_chatgpt(
+                            descripcion_proyecto,
+                            int(cantidad_actividades),
+                            modelo_openai
+                        )
                 except Exception as e:
-                    st.error(f"No se pudo generar el PDF: {e}")
+                    st.error(f"No se pudieron generar las actividades: {e}")
+                    st.stop()
 
-        if (
-            st.session_state.ruta_pdf_cronograma_generado
-            and Path(st.session_state.ruta_pdf_cronograma_generado).exists()
-        ):
-            ruta_pdf = st.session_state.ruta_pdf_cronograma_generado
+            bloques_fechas = dividir_fechas_por_actividad(
+                fechas_programadas,
+                int(cantidad_actividades)
+            )
 
-            with open(ruta_pdf, "rb") as f:
+            datos_cronograma = {
+                "tipo_documento": "Cronograma de actividades",
+                "codigo_proyecto": codigo_proyecto,
+                "nombre_proyecto": nombre_proyecto,
+                "nombre_talento": nombre_talento,
+                "nombre_experto": nombre_experto,
+                "linea": linea,
+                "cantidad_actividades": int(cantidad_actividades),
+                "fecha_inicio": fecha_inicio,
+                "fecha_fin": fecha_fin,
+                "dias_semana": dias_semana,
+                "descripcion_proyecto": descripcion_proyecto,
+                "actividades": actividades,
+                "fechas_programadas": fechas_programadas,
+                "bloques_fechas": bloques_fechas,
+                "modo_generacion": "Prueba local" if modo_prueba else "ChatGPT API",
+            }
+
+            st.session_state.datos_cronograma_generado = datos_cronograma
+            st.session_state.ruta_pdf_cronograma_generado = None
+
+            st.success("Cronograma generado correctamente. Ahora puedes revisar y generar el PDF.")
+
+        if st.session_state.datos_cronograma_generado:
+            datos_cronograma = st.session_state.datos_cronograma_generado
+
+            st.markdown("## Resumen para validación")
+
+            st.write("**Modo de generación:**", datos_cronograma["modo_generacion"])
+            st.write("**Código del proyecto:**", datos_cronograma["codigo_proyecto"])
+            st.write("**Nombre del proyecto:**", datos_cronograma["nombre_proyecto"])
+            st.write("**Talento:**", datos_cronograma["nombre_talento"])
+            st.write("**Experto:**", datos_cronograma["nombre_experto"])
+            st.write("**Línea:**", datos_cronograma["linea"])
+            st.write(
+                "**Periodo:**",
+                f'{datos_cronograma["fecha_inicio"].strftime("%d/%m/%Y")} al {datos_cronograma["fecha_fin"].strftime("%d/%m/%Y")}'
+            )
+            st.write("**Días programados:**", ", ".join(datos_cronograma["dias_semana"]))
+
+            st.markdown("### Actividades generadas")
+            for idx, actividad in enumerate(datos_cronograma["actividades"], start=1):
+                fechas_actividad = datos_cronograma["bloques_fechas"][idx - 1]
+                if fechas_actividad:
+                    periodo = f"{fechas_actividad[0].strftime('%d/%m/%Y')} al {fechas_actividad[-1].strftime('%d/%m/%Y')}"
+                else:
+                    periodo = "Sin fecha asignada"
+
+                st.write(f"**{idx}.** {actividad} — {periodo}")
+
+            col_json, col_pdf = st.columns(2)
+
+            with col_json:
+                datos_json_descarga = dict(datos_cronograma)
+                datos_json_descarga["fecha_inicio"] = datos_json_descarga["fecha_inicio"].strftime("%d/%m/%Y")
+                datos_json_descarga["fecha_fin"] = datos_json_descarga["fecha_fin"].strftime("%d/%m/%Y")
+                datos_json_descarga["fechas_programadas"] = [
+                    f.strftime("%d/%m/%Y") for f in datos_json_descarga["fechas_programadas"]
+                ]
+                datos_json_descarga["bloques_fechas"] = [
+                    [f.strftime("%d/%m/%Y") for f in bloque]
+                    for bloque in datos_json_descarga["bloques_fechas"]
+                ]
+
                 st.download_button(
-                    label="⬇️ Descargar PDF del cronograma",
-                    data=f,
-                    file_name=Path(ruta_pdf).name,
-                    mime="application/pdf"
+                    label="Descargar datos en JSON",
+                    data=json.dumps(datos_json_descarga, ensure_ascii=False, indent=4),
+                    file_name="datos_cronograma_actividades.json",
+                    mime="application/json"
                 )
+
+            with col_pdf:
+                if st.button("📄 Generar PDF del cronograma"):
+                    try:
+                        ruta_pdf = generar_pdf_cronograma(datos_cronograma)
+                        st.session_state.ruta_pdf_cronograma_generado = ruta_pdf
+                        st.success(f"PDF generado correctamente: {ruta_pdf}")
+                    except Exception as e:
+                        st.error(f"No se pudo generar el PDF: {e}")
+
+            if (
+                st.session_state.ruta_pdf_cronograma_generado
+                and Path(st.session_state.ruta_pdf_cronograma_generado).exists()
+            ):
+                ruta_pdf = st.session_state.ruta_pdf_cronograma_generado
+
+                with open(ruta_pdf, "rb") as f:
+                    st.download_button(
+                        label="⬇️ Descargar PDF del cronograma",
+                        data=f,
+                        file_name=Path(ruta_pdf).name,
+                        mime="application/pdf"
+                    )
+
+        st.stop()
+
+    st.warning("Selecciona una opción válida de la fase de planeación.")
+    st.stop()
+
+    
 elif st.session_state.fase_seleccionada == "ejecucion":
     st.warning("Este módulo se desarrollará después de validar los documentos de la fase de inicio.")
 
