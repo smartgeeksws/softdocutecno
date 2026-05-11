@@ -3213,9 +3213,173 @@ elif st.session_state.fase_seleccionada == "planeacion":
         st.info("Selecciona un documento de planeación para continuar.")
         st.stop()
 
-    if st.session_state.documento_seleccionado == "estado_arte":
-        st.warning("El módulo de Estado del arte estará disponible en una siguiente versión.")
-        st.stop()
+if st.session_state.documento_seleccionado == "estado_arte":
+    st.markdown("---")
+    st.subheader("Formulario para Estado del Arte")
+
+    st.info(
+        "Este módulo genera un documento académico e investigativo con búsqueda de proyectos similares, "
+        "tecnologías relevantes, artículos de validación y referencias en APA 7."
+    )
+
+    with st.form("form_estado_arte"):
+        col_a, col_b = st.columns(2)
+
+        with col_a:
+            codigo_proyecto = st.text_input(
+                "Código del proyecto",
+                placeholder="Ejemplo: P2024-143440-16600"
+            )
+
+            nombre_proyecto = st.text_area(
+                "Nombre del proyecto",
+                placeholder="Título oficial de la iniciativa",
+                height=80
+            )
+
+        with col_b:
+            fecha_documento = st.date_input(
+                "Fecha del documento",
+                value=date.today()
+            )
+
+            tecnologias_previstas_texto = st.text_area(
+                "Tecnologías previstas",
+                placeholder="Ejemplo: Inteligencia artificial, animación 3D, códigos QR, realidad aumentada",
+                height=80
+            )
+
+        descripcion_proyecto = st.text_area(
+            "Háblame sobre el proyecto",
+            placeholder="Describe de qué trata, quién es el talento detrás, cuál es el origen de la iniciativa y qué la hace innovadora.",
+            height=220
+        )
+
+        generar_estado_arte = st.form_submit_button("Generar Estado del Arte")
+
+    if generar_estado_arte:
+        errores = []
+
+        campos_obligatorios = {
+            "Código del proyecto": codigo_proyecto,
+            "Nombre del proyecto": nombre_proyecto,
+            "Descripción detallada": descripcion_proyecto,
+            "Tecnologías previstas": tecnologias_previstas_texto,
+        }
+
+        for campo, valor in campos_obligatorios.items():
+            if not str(valor).strip():
+                errores.append(campo)
+
+        if errores:
+            st.error("Faltan campos obligatorios: " + ", ".join(errores))
+            st.stop()
+
+        tecnologias_previstas = limpiar_lista_tecnologias(tecnologias_previstas_texto)
+
+        with st.spinner("Generando Estado del Arte con búsqueda académica y referencias APA 7..."):
+            try:
+                if modo_prueba:
+                    contenido_estado_arte = generar_estado_arte_modo_prueba(
+                        nombre_proyecto,
+                        codigo_proyecto,
+                        descripcion_proyecto,
+                        tecnologias_previstas,
+                    )
+                else:
+                    contenido_estado_arte = generar_estado_arte_con_chatgpt(
+                        nombre_proyecto,
+                        codigo_proyecto,
+                        descripcion_proyecto,
+                        tecnologias_previstas,
+                        modelo_openai,
+                    )
+            except Exception as e:
+                st.error(f"No se pudo generar el Estado del Arte: {e}")
+                st.stop()
+
+        datos_estado_arte = {
+            "tipo_documento": "Estado del Arte",
+            "codigo_proyecto": codigo_proyecto,
+            "nombre_proyecto": nombre_proyecto,
+            "fecha_documento": fecha_documento,
+            "descripcion_proyecto": descripcion_proyecto,
+            "tecnologias_previstas": tecnologias_previstas,
+            "contenido_estado_arte": contenido_estado_arte,
+            "modo_generacion": "Prueba local" if modo_prueba else "ChatGPT API con búsqueda web",
+        }
+
+        st.session_state.datos_estado_arte_generado = datos_estado_arte
+        st.session_state.ruta_pdf_estado_arte_generado = None
+
+        st.success("Estado del Arte generado correctamente. Ahora puedes revisar y generar el PDF.")
+
+    if st.session_state.datos_estado_arte_generado:
+        datos_estado_arte = st.session_state.datos_estado_arte_generado
+        contenido = datos_estado_arte["contenido_estado_arte"]
+
+        st.markdown("## Resumen para validación")
+
+        st.write("**Modo de generación:**", datos_estado_arte["modo_generacion"])
+        st.write("**Código del proyecto:**", datos_estado_arte["codigo_proyecto"])
+        st.write("**Nombre del proyecto:**", datos_estado_arte["nombre_proyecto"])
+        st.write("**Fecha:**", datos_estado_arte["fecha_documento"].strftime("%d/%m/%Y"))
+        st.write("**Tecnologías previstas:**", ", ".join(datos_estado_arte["tecnologias_previstas"]))
+
+        st.markdown("### Introducción")
+        st.write(contenido.get("introduccion", ""))
+
+        st.markdown("### Objetivos")
+        for objetivo in contenido.get("objetivos", []):
+            st.write(f"- {objetivo}")
+
+        st.markdown("### Proyectos similares")
+        for item in contenido.get("proyectos_similares", []):
+            st.write(f"**{item.get('numero', '')}. {item.get('nombre', '')}**")
+            st.write(item.get("enlace", ""))
+
+        st.markdown("### Tecnologías emergentes")
+        for item in contenido.get("tecnologias_emergentes", []):
+            st.write(f"**{item.get('tecnologia', '')}:** {item.get('analisis', '')}")
+
+        col_json, col_pdf = st.columns(2)
+
+        with col_json:
+            datos_json_descarga = dict(datos_estado_arte)
+            if isinstance(datos_json_descarga.get("fecha_documento"), date):
+                datos_json_descarga["fecha_documento"] = datos_json_descarga["fecha_documento"].strftime("%d/%m/%Y")
+
+            st.download_button(
+                label="Descargar datos en JSON",
+                data=json.dumps(datos_json_descarga, ensure_ascii=False, indent=4),
+                file_name="datos_estado_arte.json",
+                mime="application/json"
+            )
+
+        with col_pdf:
+            if st.button("📄 Generar PDF del Estado del Arte"):
+                try:
+                    ruta_pdf = generar_pdf_estado_arte(datos_estado_arte)
+                    st.session_state.ruta_pdf_estado_arte_generado = ruta_pdf
+                    st.success(f"PDF generado correctamente: {ruta_pdf}")
+                except Exception as e:
+                    st.error(f"No se pudo generar el PDF: {e}")
+
+        if (
+            st.session_state.ruta_pdf_estado_arte_generado
+            and Path(st.session_state.ruta_pdf_estado_arte_generado).exists()
+        ):
+            ruta_pdf = st.session_state.ruta_pdf_estado_arte_generado
+
+            with open(ruta_pdf, "rb") as f:
+                st.download_button(
+                    label="⬇️ Descargar PDF del Estado del Arte",
+                    data=f,
+                    file_name=Path(ruta_pdf).name,
+                    mime="application/pdf"
+                )
+
+    st.stop()
 
     if st.session_state.documento_seleccionado != "cronograma":
         st.warning("Este módulo estará disponible en una siguiente versión. Por ahora está habilitado el cronograma de actividades.")
