@@ -2604,22 +2604,22 @@ elif st.session_state.fase_seleccionada == "planeacion":
     st.markdown("---")
     st.subheader("Documentos de la fase de planeación")
 
-    plan_col1, plan_col2, plan_col3 = st.columns(3)
+    plan_col1, plan_col2 = st.columns(2)
 
     with plan_col1:
         if st.button("📊 Cronograma de actividades"):
             seleccionar_documento("cronograma")
 
     with plan_col2:
-        if st.button("📋 Plan de trabajo"):
-            seleccionar_documento("plan_trabajo")
-
-    with plan_col3:
-        if st.button("📦 Entregables"):
-            seleccionar_documento("entregables")
+        if st.button("📚 Estado del arte"):
+            seleccionar_documento("estado_arte")
 
     if st.session_state.documento_seleccionado is None:
         st.info("Selecciona un documento de planeación para continuar.")
+        st.stop()
+
+    if st.session_state.documento_seleccionado == "estado_arte":
+        st.warning("El módulo de Estado del arte estará disponible en una siguiente versión.")
         st.stop()
 
     if st.session_state.documento_seleccionado != "cronograma":
@@ -2850,7 +2850,6 @@ elif st.session_state.fase_seleccionada == "planeacion":
                     file_name=Path(ruta_pdf).name,
                     mime="application/pdf"
                 )
-
 elif st.session_state.fase_seleccionada == "ejecucion":
     st.warning("Este módulo se desarrollará después de validar los documentos de la fase de inicio.")
 
