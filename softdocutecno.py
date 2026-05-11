@@ -4802,4 +4802,30 @@ elif st.session_state.fase_seleccionada == "ejecucion":
                 )
 
 elif st.session_state.fase_seleccionada == "cierre":
-    st.warning("Este módulo se desarrollará después de validar los documentos de la fase de inicio.")
+    st.markdown("---")
+    st.subheader("Documentos de la fase de cierre")
+
+    cierre_col1, cierre_col2 = st.columns(2)
+
+    with cierre_col1:
+        if st.button("📄 Generar acta de cierre y ficha de caracterización"):
+            seleccionar_documento("acta_cierre_ficha")
+
+    with cierre_col2:
+        if st.button("📘 Informe técnico final"):
+            seleccionar_documento("informe_tecnico_final")
+
+    if st.session_state.documento_seleccionado is None:
+        st.info("Selecciona un documento de cierre para continuar.")
+        st.stop()
+
+    if st.session_state.documento_seleccionado == "acta_cierre_ficha":
+        st.warning("El módulo de Acta de cierre y ficha de caracterización estará disponible en una siguiente versión.")
+        st.stop()
+
+    if st.session_state.documento_seleccionado == "informe_tecnico_final":
+        st.warning("El módulo de Informe técnico final estará disponible en una siguiente versión.")
+        st.stop()
+
+    st.warning("Selecciona una opción válida de la fase de cierre.")
+    st.stop()
