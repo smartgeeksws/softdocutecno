@@ -135,6 +135,12 @@ if "datos_estado_arte_generado" not in st.session_state:
 if "ruta_pdf_estado_arte_generado" not in st.session_state:
     st.session_state.ruta_pdf_estado_arte_generado = None
 
+if "datos_acta_ejecucion_generada" not in st.session_state:
+    st.session_state.datos_acta_ejecucion_generada = None
+
+if "ruta_pdf_acta_ejecucion_generado" not in st.session_state:
+    st.session_state.ruta_pdf_acta_ejecucion_generado = None
+
 
 # =====================================================
 # FUNCIONES GENERALES
@@ -2856,6 +2862,602 @@ def generar_pdf_estado_arte(datos: dict) -> str:
 
     return ruta_pdf
 
+# =====================================================
+# ACTA DE EJECUCIÓN - ASESORÍAS Y USOS
+# =====================================================
+
+VALOR_HORA_EXPERTO = 202121
+
+
+def formato_moneda_colombiana(valor: float | int) -> str:
+    try:
+        valor_int = int(round(float(valor)))
+    except Exception:
+        valor_int = 0
+
+    return "$" + f"{valor_int:,.0f}".replace(",", ".")
+
+
+def distribuir_fechas_para_asesorias(
+    fecha_inicio: date,
+    fecha_fin: date,
+    dias_semana: list[str],
+    cantidad_asesorias: int
+) -> list[date]:
+    fechas_disponibles = obtener_fechas_programadas(fecha_inicio, fecha_fin, dias_semana)
+
+    if not fechas_disponibles:
+        return []
+
+    if cantidad_asesorias <= 0:
+        return []
+
+    fechas_resultado = []
+
+    for i in range(cantidad_asesorias):
+        indice = round(i * (len(fechas_disponibles) - 1) / max(cantidad_asesorias - 1, 1))
+        fechas_resultado.append(fechas_disponibles[indice])
+
+    return fechas_resultado
+
+
+def generar_asesorias_ejecucion_modo_prueba(
+    descripcion_proyecto: str,
+    cantidad_asesorias: int,
+    fechas_asesorias: list[date],
+    horas_por_asesoria: float
+) -> list[dict]:
+    actividades_base = [
+        "Revisión del avance técnico del proyecto y validación de requerimientos definidos en la fase de planeación.",
+        "Asesoría para la estructuración de componentes técnicos y definición de criterios de diseño de la solución.",
+        "Acompañamiento en la selección de tecnologías, materiales, herramientas o recursos requeridos para el desarrollo.",
+        "Revisión del diseño preliminar, ajustes funcionales y recomendaciones para la construcción o implementación.",
+        "Asesoría en pruebas iniciales, verificación de resultados y análisis de funcionamiento de la solución propuesta.",
+        "Acompañamiento en ajustes técnicos derivados de la validación del prototipo o componente desarrollado.",
+        "Revisión de evidencias, documentación técnica y consolidación de avances del proyecto.",
+        "Asesoría para cierre parcial de actividades, identificación de mejoras y definición de siguientes pasos.",
+    ]
+
+    asesorias = []
+
+    for i in range(cantidad_asesorias):
+        descripcion = actividades_base[i % len(actividades_base)]
+        fecha = fechas_asesorias[i] if i < len(fechas_asesorias) else date.today()
+
+        asesorias.append(
+            {
+                "fecha": fecha.strftime("%d/%m/%Y"),
+                "horas": float(horas_por_asesoria),
+                "descripcion": descripcion,
+            }
+        )
+
+    return asesorias
+
+
+def generar_asesorias_ejecucion_con_chatgpt(
+    descripcion_proyecto: str,
+    cantidad_asesorias: int,
+    fechas_asesorias: list[date],
+    horas_por_asesoria: float,
+    modelo: str = "gpt-4.1-mini"
+) -> list[dict]:
+    if OpenAI is None:
+        raise ImportError("No está instalada la librería openai. Instálala con: pip install openai")
+
+    api_key = obtener_api_key()
+    if not api_key:
+        raise ValueError("No se encontró OPENAI_API_KEY. Configúrala como variable de entorno o en .streamlit/secrets.toml.")
+
+    fechas_texto = [f.strftime("%d/%m/%Y") for f in fechas_asesorias]
+
+    if not fechas_texto:
+        return generar_asesorias_ejecucion_modo_prueba(
+            descripcion_proyecto,
+            cantidad_asesorias,
+            fechas_asesorias,
+            horas_por_asesoria
+        )
+
+    client = OpenAI(api_key=api_key)
+
+    instrucciones = """
+Eres un experto en seguimiento técnico de proyectos de base tecnológica de la Red Tecnoparque SENA.
+
+Debes generar actividades de asesoría y uso de infraestructura para un acta de ejecución.
+Las actividades deben ser técnicas, claras, verificables y coherentes con el desarrollo del proyecto.
+No inventes nombres de personas, códigos, valores económicos ni entidades.
+Usa únicamente las fechas suministradas.
+Responde únicamente con JSON válido, sin markdown y sin explicaciones adicionales.
+"""
+
+    entrada = f"""
+Descripción general del proyecto:
+{descripcion_proyecto}
+
+Cantidad de asesorías requeridas:
+{cantidad_asesorias}
+
+Horas por asesoría:
+{horas_por_asesoria}
+
+Fechas disponibles para distribuir las asesorías:
+{", ".join(fechas_texto)}
+
+Genera exactamente {cantidad_asesorias} registros.
+
+Formato JSON obligatorio:
+{{
+  "asesorias": [
+    {{
+      "fecha": "dd/mm/aaaa",
+      "horas": {horas_por_asesoria},
+      "descripcion": "Descripción técnica de la asesoría realizada"
+    }}
+  ]
+}}
+"""
+
+    try:
+        respuesta = client.responses.create(
+            model=modelo,
+            instructions=instrucciones,
+            input=entrada,
+            temperature=0.35,
+        )
+
+        texto = limpiar_respuesta_json(respuesta.output_text)
+        datos = json.loads(texto)
+
+        asesorias = datos.get("asesorias", [])
+
+        asesorias_limpias = []
+        fechas_validas = set(fechas_texto)
+
+        for i, item in enumerate(asesorias):
+            fecha_item = str(item.get("fecha", "")).strip()
+            if fecha_item not in fechas_validas:
+                fecha_item = fechas_texto[min(i, len(fechas_texto) - 1)]
+
+            asesorias_limpias.append(
+                {
+                    "fecha": fecha_item,
+                    "horas": float(horas_por_asesoria),
+                    "descripcion": str(item.get("descripcion", "")).strip() or "Asesoría técnica para seguimiento del proyecto.",
+                }
+            )
+
+        if len(asesorias_limpias) < cantidad_asesorias:
+            faltantes = cantidad_asesorias - len(asesorias_limpias)
+            adicionales = generar_asesorias_ejecucion_modo_prueba(
+                descripcion_proyecto,
+                faltantes,
+                fechas_asesorias[-faltantes:] if faltantes <= len(fechas_asesorias) else fechas_asesorias,
+                horas_por_asesoria
+            )
+            asesorias_limpias.extend(adicionales)
+
+        return asesorias_limpias[:cantidad_asesorias]
+
+    except Exception:
+        return generar_asesorias_ejecucion_modo_prueba(
+            descripcion_proyecto,
+            cantidad_asesorias,
+            fechas_asesorias,
+            horas_por_asesoria
+        )
+
+
+def generar_pdf_acta_ejecucion(datos: dict) -> str:
+    if canvas is None:
+        raise ImportError("No está instalada reportlab. Instálala con: pip install reportlab")
+
+    Path(CARPETA_SALIDA).mkdir(parents=True, exist_ok=True)
+
+    nombre_archivo = (
+        f"Acta_Ejecucion_"
+        f"{safe_filename(datos.get('codigo_proyecto', 'proyecto'))}_"
+        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    )
+    ruta_pdf = str(Path(CARPETA_SALIDA) / nombre_archivo)
+
+    page_size = landscape(letter)
+    page_width, page_height = page_size
+
+    doc = SimpleDocTemplate(
+        ruta_pdf,
+        pagesize=page_size,
+        rightMargin=1.2 * cm,
+        leftMargin=1.2 * cm,
+        topMargin=1.5 * cm,
+        bottomMargin=1.0 * cm,
+    )
+
+    estilo_titulo = ParagraphStyle(
+        name="TituloActaEjecucion",
+        fontName="Helvetica-Bold",
+        fontSize=10.5,
+        leading=13,
+        alignment=TA_CENTER,
+    )
+
+    estilo_header = ParagraphStyle(
+        name="HeaderActaEjecucion",
+        fontName="Helvetica-Bold",
+        fontSize=7.4,
+        leading=8.5,
+        alignment=TA_CENTER,
+    )
+
+    estilo_celda = ParagraphStyle(
+        name="CeldaActaEjecucion",
+        fontName="Helvetica",
+        fontSize=7.2,
+        leading=8.5,
+        alignment=TA_CENTER,
+    )
+
+    estilo_celda_left = ParagraphStyle(
+        name="CeldaLeftActaEjecucion",
+        fontName="Helvetica",
+        fontSize=7.2,
+        leading=8.5,
+        alignment=TA_LEFT,
+    )
+
+    estilo_negrita_left = ParagraphStyle(
+        name="NegritaLeftActaEjecucion",
+        fontName="Helvetica-Bold",
+        fontSize=7.4,
+        leading=8.5,
+        alignment=TA_LEFT,
+    )
+
+    historia = []
+
+    # Encabezado principal
+    logo_path = obtener_ruta_logo_sena()
+    if logo_path:
+        try:
+            logo = Image(logo_path, width=2.2 * cm, height=1.8 * cm)
+        except Exception:
+            logo = Paragraph("SENA", estilo_titulo)
+    else:
+        logo = Paragraph("SENA", estilo_titulo)
+
+    encabezado_data = [
+        [
+            logo,
+            Paragraph("Seguimiento de Asesorías y Usos de Infraestructura", estilo_titulo),
+        ],
+        [
+            "",
+            Paragraph(f"ACTA No. 02 del proyecto No {datos['codigo_proyecto']}", estilo_titulo),
+        ],
+    ]
+
+    tabla_encabezado = Table(
+        encabezado_data,
+        colWidths=[7.0 * cm, 19.0 * cm],
+        rowHeights=[1.0 * cm, 0.8 * cm],
+    )
+
+    tabla_encabezado.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.45, colors.black),
+                ("SPAN", (0, 0), (0, 1)),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (0, 1), "CENTER"),
+            ]
+        )
+    )
+
+    historia.append(tabla_encabezado)
+
+    # Información general
+    gris = colors.HexColor("#BFBFBF")
+
+    seccion_info = Table(
+        [[Paragraph("Información general", estilo_header)]],
+        colWidths=[26.0 * cm],
+        rowHeights=[0.55 * cm],
+    )
+    seccion_info.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.45, colors.black),
+                ("BACKGROUND", (0, 0), (-1, -1), gris),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+    historia.append(seccion_info)
+
+    info_data = [
+        [
+            Paragraph("Código del proyecto", estilo_header),
+            Paragraph("Nombre del proyecto", estilo_header),
+            Paragraph("Experto a cargo del proyecto", estilo_header),
+            Paragraph("Sublínea tecnológica", estilo_header),
+        ],
+        [
+            Paragraph(datos["codigo_proyecto"], estilo_celda),
+            Paragraph(datos["nombre_proyecto"], estilo_celda),
+            Paragraph(datos["nombre_experto"], estilo_celda),
+            Paragraph(datos["sublinea_tecnologica"], estilo_celda),
+        ],
+    ]
+
+    tabla_info = Table(
+        info_data,
+        colWidths=[5.8 * cm, 10.0 * cm, 5.2 * cm, 5.0 * cm],
+        rowHeights=[0.55 * cm, 2.05 * cm],
+    )
+
+    tabla_info.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.45, colors.black),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+
+    historia.append(tabla_info)
+
+    # Talentos
+    seccion_talentos = Table(
+        [[Paragraph("Talentos del Proyecto", estilo_header)]],
+        colWidths=[26.0 * cm],
+        rowHeights=[0.55 * cm],
+    )
+    seccion_talentos.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.45, colors.black),
+                ("BACKGROUND", (0, 0), (-1, -1), gris),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+    historia.append(seccion_talentos)
+
+    talentos_data = [
+        [
+            Paragraph("Número de documento", estilo_header),
+            Paragraph("Nombres y apellidos", estilo_header),
+            Paragraph("Número de contacto", estilo_header),
+        ],
+        [
+            Paragraph(datos["documento_talento"], estilo_celda),
+            Paragraph(datos["nombre_talento"], estilo_celda),
+            Paragraph(datos["telefono_talento"], estilo_celda),
+        ],
+    ]
+
+    tabla_talentos = Table(
+        talentos_data,
+        colWidths=[8.5 * cm, 11.5 * cm, 6.0 * cm],
+        rowHeights=[0.55 * cm, 0.75 * cm],
+    )
+
+    tabla_talentos.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.45, colors.black),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+
+    historia.append(tabla_talentos)
+
+    # Asesorías y usos
+    seccion_asesorias = Table(
+        [[Paragraph("Asesorías y usos", estilo_header)]],
+        colWidths=[26.0 * cm],
+        rowHeights=[0.55 * cm],
+    )
+    seccion_asesorias.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.45, colors.black),
+                ("BACKGROUND", (0, 0), (-1, -1), gris),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+    historia.append(seccion_asesorias)
+
+    asesorias_data = [
+        [
+            Paragraph("Fecha de la Asesoría y uso de infraestructura", estilo_header),
+            Paragraph("Horas de Asesoría", estilo_header),
+            Paragraph("Descripción", estilo_header),
+        ]
+    ]
+
+    for item in datos["asesorias"]:
+        asesorias_data.append(
+            [
+                Paragraph(str(item.get("fecha", "")), estilo_celda),
+                Paragraph(str(item.get("horas", "")), estilo_celda),
+                Paragraph(str(item.get("descripcion", "")), estilo_celda_left),
+            ]
+        )
+
+    asesorias_data.append(
+        [
+            "",
+            "",
+            Paragraph(
+                f"<b>Valor total de la asesoría (Valor hora: {formato_moneda_colombiana(VALOR_HORA_EXPERTO)}) "
+                f"{formato_moneda_colombiana(datos['total_honorarios'])}</b>",
+                estilo_negrita_left,
+            ),
+        ]
+    )
+
+    row_heights_asesorias = [0.55 * cm] + [0.75 * cm for _ in datos["asesorias"]] + [0.55 * cm]
+
+    tabla_asesorias = Table(
+        asesorias_data,
+        colWidths=[7.0 * cm, 4.0 * cm, 15.0 * cm],
+        rowHeights=row_heights_asesorias,
+        repeatRows=1,
+    )
+
+    tabla_asesorias.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.45, colors.black),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("SPAN", (0, len(asesorias_data) - 1), (1, len(asesorias_data) - 1)),
+            ]
+        )
+    )
+
+    historia.append(tabla_asesorias)
+
+    # Materiales y equipos
+    seccion_materiales = Table(
+        [[Paragraph("Materiales, equipos e insumos utilizados en el proyecto", estilo_header)]],
+        colWidths=[26.0 * cm],
+        rowHeights=[0.55 * cm],
+    )
+    seccion_materiales.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.45, colors.black),
+                ("BACKGROUND", (0, 0), (-1, -1), gris),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+    historia.append(seccion_materiales)
+
+    materiales_data = [
+        [
+            Paragraph("Nombre del equipo/Material Usado", estilo_header),
+            Paragraph("horas de uso/cantidad", estilo_header),
+            Paragraph("valor total", estilo_header),
+        ]
+    ]
+
+    for item in datos["equipos_materiales"]:
+        materiales_data.append(
+            [
+                Paragraph(str(item.get("nombre", "")), estilo_celda_left),
+                Paragraph(str(item.get("cantidad_horas", "")), estilo_celda),
+                Paragraph(formato_moneda_colombiana(item.get("valor_total", 0)), estilo_celda),
+            ]
+        )
+
+    materiales_data.append(
+        [
+            "",
+            Paragraph("<b>Costo total uso de equipos e infraestructura</b>", estilo_negrita_left),
+            Paragraph(f"<b>{formato_moneda_colombiana(datos['total_equipos_materiales'])}</b>", estilo_celda),
+        ]
+    )
+
+    row_heights_materiales = [0.55 * cm] + [0.65 * cm for _ in datos["equipos_materiales"]] + [0.55 * cm]
+
+    tabla_materiales = Table(
+        materiales_data,
+        colWidths=[8.0 * cm, 12.0 * cm, 6.0 * cm],
+        rowHeights=row_heights_materiales,
+        repeatRows=1,
+    )
+
+    tabla_materiales.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.45, colors.black),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("SPAN", (0, len(materiales_data) - 1), (0, len(materiales_data) - 1)),
+            ]
+        )
+    )
+
+    historia.append(tabla_materiales)
+
+    # Total general
+    total_general = Table(
+        [
+            [
+                Paragraph("Costo total honorarios experto más valor de uso de equipos y materiales", estilo_negrita_left),
+                Paragraph(f"<b>{formato_moneda_colombiana(datos['total_general'])}</b>", estilo_celda),
+            ]
+        ],
+        colWidths=[20.0 * cm, 6.0 * cm],
+        rowHeights=[0.65 * cm],
+    )
+
+    total_general.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.45, colors.black),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+
+    historia.append(total_general)
+
+    # Firmas
+    seccion_firmas = Table(
+        [[Paragraph("Firma Expertos y Talentos", estilo_header)]],
+        colWidths=[26.0 * cm],
+        rowHeights=[0.55 * cm],
+    )
+    seccion_firmas.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.45, colors.black),
+                ("BACKGROUND", (0, 0), (-1, -1), gris),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+    historia.append(seccion_firmas)
+
+    firmas_data = [
+        [
+            Paragraph(f"{datos['nombre_experto']} - Experto", estilo_celda),
+            Paragraph("Talento Interlocutor", estilo_celda),
+        ],
+        [
+            Paragraph("Firma: ________________________________", estilo_celda),
+            Paragraph(f"{datos['nombre_talento']}<br/>Firma: ________________________________", estilo_celda),
+        ],
+    ]
+
+    tabla_firmas = Table(
+        firmas_data,
+        colWidths=[13.0 * cm, 13.0 * cm],
+        rowHeights=[0.75 * cm, 1.2 * cm],
+    )
+
+    tabla_firmas.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.45, colors.black),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+
+    historia.append(tabla_firmas)
+
+    doc.build(historia)
+
+    datos_json = dict(datos)
+    datos_json["ruta_pdf"] = ruta_pdf
+    guardar_datos_json(datos_json, ruta="datos_acta_ejecucion.json")
+
+    return ruta_pdf
 
 # =====================================================
 # SIDEBAR DE CONFIGURACIÓN
@@ -3820,7 +4422,384 @@ elif st.session_state.fase_seleccionada == "planeacion":
 
     
 elif st.session_state.fase_seleccionada == "ejecucion":
-    st.warning("Este módulo se desarrollará después de validar los documentos de la fase de inicio.")
+    st.markdown("---")
+    st.subheader("Acta de ejecución")
+
+    st.info(
+        "Este módulo genera el documento de seguimiento de asesorías y usos de infraestructura. "
+        "Incluye cálculo automático de honorarios, equipos, materiales y total general."
+    )
+
+    metodo_asesorias = st.radio(
+        "Método de generación de asesorías y usos",
+        options=["Generación con IA", "Generación manual"],
+        horizontal=True,
+    )
+
+    st.markdown("### Equipos y materiales")
+    cantidad_equipos = st.number_input(
+        "¿Cuántos registros de uso de equipos y materiales desea ingresar?",
+        min_value=0,
+        max_value=30,
+        value=1,
+        step=1,
+    )
+
+    st.markdown("### Asesorías y usos")
+    if metodo_asesorias == "Generación manual":
+        cantidad_asesorias_manual = st.number_input(
+            "Cantidad de registros de asesorías y usos",
+            min_value=1,
+            max_value=30,
+            value=4,
+            step=1,
+        )
+    else:
+        cantidad_asesorias_manual = 0
+
+    with st.form("form_acta_ejecucion"):
+        st.markdown("## Información general")
+
+        col_a, col_b = st.columns(2)
+
+        with col_a:
+            codigo_proyecto = st.text_input(
+                "Código del proyecto",
+                placeholder="Ejemplo: P2025-1431026-17218"
+            )
+
+            nombre_proyecto = st.text_area(
+                "Nombre del proyecto",
+                placeholder="Nombre oficial del proyecto",
+                height=90
+            )
+
+            sublinea_tecnologica = st.text_input(
+                "Sublínea tecnológica",
+                placeholder="Ejemplo: IND - Productos y procesos"
+            )
+
+            nombre_experto = st.text_input(
+                "Nombre del experto",
+                placeholder="Nombre completo del experto"
+            )
+
+        with col_b:
+            nombre_talento = st.text_input(
+                "Nombre del talento",
+                placeholder="Nombre completo del talento interlocutor"
+            )
+
+            documento_talento = st.text_input(
+                "Documento de identidad del talento",
+                placeholder="Número de documento"
+            )
+
+            telefono_talento = st.text_input(
+                "Teléfono del talento",
+                placeholder="Número de contacto"
+            )
+
+        st.markdown("## Equipos, materiales e insumos utilizados")
+
+        equipos_materiales = []
+
+        for i in range(int(cantidad_equipos)):
+            st.markdown(f"**Registro equipo/material {i + 1}**")
+            col1, col2, col3 = st.columns([2, 1, 1])
+
+            with col1:
+                nombre_equipo = st.text_input(
+                    f"Nombre del equipo / Material usado {i + 1}",
+                    key=f"equipo_nombre_{i}"
+                )
+
+            with col2:
+                cantidad_horas = st.text_input(
+                    f"Horas de uso / Cantidad {i + 1}",
+                    key=f"equipo_cantidad_{i}"
+                )
+
+            with col3:
+                valor_total = st.number_input(
+                    f"Valor total {i + 1}",
+                    min_value=0,
+                    value=0,
+                    step=1000,
+                    key=f"equipo_valor_{i}"
+                )
+
+            equipos_materiales.append(
+                {
+                    "nombre": nombre_equipo,
+                    "cantidad_horas": cantidad_horas,
+                    "valor_total": valor_total,
+                }
+            )
+
+        st.markdown("## Asesorías y usos")
+
+        asesorias = []
+        descripcion_proyecto = ""
+        fecha_inicio = None
+        fecha_fin = None
+        dias_ejecucion = []
+        cantidad_asesorias_ia = 0
+        horas_por_asesoria_ia = 0
+
+        if metodo_asesorias == "Generación manual":
+            for i in range(int(cantidad_asesorias_manual)):
+                st.markdown(f"**Asesoría / uso {i + 1}**")
+                col1, col2, col3 = st.columns([1.2, 1, 3])
+
+                with col1:
+                    fecha_asesoria = st.date_input(
+                        f"Fecha asesoría {i + 1}",
+                        value=date.today(),
+                        key=f"asesoria_fecha_manual_{i}"
+                    )
+
+                with col2:
+                    horas_asesoria = st.number_input(
+                        f"Horas asesoría {i + 1}",
+                        min_value=0.5,
+                        max_value=12.0,
+                        value=2.0,
+                        step=0.5,
+                        key=f"asesoria_horas_manual_{i}"
+                    )
+
+                with col3:
+                    descripcion_asesoria = st.text_area(
+                        f"Descripción {i + 1}",
+                        height=70,
+                        key=f"asesoria_desc_manual_{i}"
+                    )
+
+                asesorias.append(
+                    {
+                        "fecha": fecha_asesoria.strftime("%d/%m/%Y"),
+                        "horas": horas_asesoria,
+                        "descripcion": descripcion_asesoria,
+                    }
+                )
+
+        else:
+            col1, col2 = st.columns(2)
+
+            with col1:
+                cantidad_asesorias_ia = st.number_input(
+                    "Cantidad de asesorías",
+                    min_value=1,
+                    max_value=30,
+                    value=4,
+                    step=1
+                )
+
+                horas_por_asesoria_ia = st.number_input(
+                    "Horas por asesoría",
+                    min_value=0.5,
+                    max_value=12.0,
+                    value=2.0,
+                    step=0.5
+                )
+
+                fecha_inicio = st.date_input(
+                    "Fecha de inicio",
+                    value=date.today()
+                )
+
+            with col2:
+                fecha_fin = st.date_input(
+                    "Fecha de fin",
+                    value=date.today() + timedelta(days=30)
+                )
+
+                dias_ejecucion = st.multiselect(
+                    "Días de ejecución",
+                    options=["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"],
+                    default=["Martes", "Jueves"]
+                )
+
+            descripcion_proyecto = st.text_area(
+                "Descripción general del proyecto",
+                placeholder="Describe el proyecto para que la IA genere actividades de asesoría coherentes.",
+                height=140
+            )
+
+        generar_acta_ejecucion = st.form_submit_button("Generar Acta de Ejecución")
+
+    if generar_acta_ejecucion:
+        errores = []
+
+        campos_obligatorios = {
+            "Código del proyecto": codigo_proyecto,
+            "Nombre del proyecto": nombre_proyecto,
+            "Sublínea tecnológica": sublinea_tecnologica,
+            "Nombre del experto": nombre_experto,
+            "Nombre del talento": nombre_talento,
+            "Documento del talento": documento_talento,
+            "Teléfono del talento": telefono_talento,
+        }
+
+        for campo, valor in campos_obligatorios.items():
+            if not str(valor).strip():
+                errores.append(campo)
+
+        equipos_validos = []
+        for item in equipos_materiales:
+            if str(item["nombre"]).strip() or str(item["cantidad_horas"]).strip() or item["valor_total"] > 0:
+                equipos_validos.append(item)
+
+        if metodo_asesorias == "Generación manual":
+            asesorias_validas = []
+            for item in asesorias:
+                if str(item["descripcion"]).strip():
+                    asesorias_validas.append(item)
+
+            if not asesorias_validas:
+                errores.append("Debe ingresar al menos una asesoría manual con descripción")
+
+        else:
+            if not descripcion_proyecto.strip():
+                errores.append("Descripción general del proyecto")
+
+            if not dias_ejecucion:
+                errores.append("Días de ejecución")
+
+            if fecha_fin < fecha_inicio:
+                errores.append("La fecha de fin no puede ser anterior a la fecha de inicio")
+
+            asesorias_validas = []
+
+        if errores:
+            st.error("Revisa los siguientes campos: " + ", ".join(errores))
+            st.stop()
+
+        if metodo_asesorias == "Generación con IA":
+            fechas_asesorias = distribuir_fechas_para_asesorias(
+                fecha_inicio,
+                fecha_fin,
+                dias_ejecucion,
+                int(cantidad_asesorias_ia)
+            )
+
+            if not fechas_asesorias:
+                st.error("No se encontraron fechas válidas para distribuir las asesorías.")
+                st.stop()
+
+            with st.spinner("Generando asesorías con IA..."):
+                if modo_prueba:
+                    asesorias_validas = generar_asesorias_ejecucion_modo_prueba(
+                        descripcion_proyecto,
+                        int(cantidad_asesorias_ia),
+                        fechas_asesorias,
+                        float(horas_por_asesoria_ia)
+                    )
+                else:
+                    asesorias_validas = generar_asesorias_ejecucion_con_chatgpt(
+                        descripcion_proyecto,
+                        int(cantidad_asesorias_ia),
+                        fechas_asesorias,
+                        float(horas_por_asesoria_ia),
+                        modelo_openai
+                    )
+
+        total_equipos_materiales = sum(float(item.get("valor_total", 0)) for item in equipos_validos)
+
+        if metodo_asesorias == "Generación con IA":
+            total_honorarios = int(cantidad_asesorias_ia) * float(horas_por_asesoria_ia) * VALOR_HORA_EXPERTO
+        else:
+            total_horas_manual = sum(float(item.get("horas", 0)) for item in asesorias_validas)
+            total_honorarios = total_horas_manual * VALOR_HORA_EXPERTO
+
+        total_general = total_equipos_materiales + total_honorarios
+
+        datos_acta_ejecucion = {
+            "tipo_documento": "Acta de Ejecución",
+            "titulo_acta": f"Acta 2 - {codigo_proyecto}",
+            "codigo_proyecto": codigo_proyecto,
+            "nombre_proyecto": nombre_proyecto,
+            "sublinea_tecnologica": sublinea_tecnologica,
+            "nombre_experto": nombre_experto,
+            "nombre_talento": nombre_talento,
+            "documento_talento": documento_talento,
+            "telefono_talento": telefono_talento,
+            "equipos_materiales": equipos_validos,
+            "asesorias": asesorias_validas,
+            "metodo_asesorias": metodo_asesorias,
+            "total_equipos_materiales": total_equipos_materiales,
+            "total_honorarios": total_honorarios,
+            "total_general": total_general,
+            "valor_hora_experto": VALOR_HORA_EXPERTO,
+            "modo_generacion": "Prueba local" if modo_prueba else "ChatGPT API" if metodo_asesorias == "Generación con IA" else "Manual",
+        }
+
+        st.session_state.datos_acta_ejecucion_generada = datos_acta_ejecucion
+        st.session_state.ruta_pdf_acta_ejecucion_generado = None
+
+        st.success("Acta de ejecución generada correctamente. Ahora puedes revisar y generar el PDF.")
+
+    if st.session_state.datos_acta_ejecucion_generada:
+        datos = st.session_state.datos_acta_ejecucion_generada
+
+        st.markdown("## Resumen para validación")
+        st.write("**Título:**", datos["titulo_acta"])
+        st.write("**Proyecto:**", datos["nombre_proyecto"])
+        st.write("**Código:**", datos["codigo_proyecto"])
+        st.write("**Experto:**", datos["nombre_experto"])
+        st.write("**Talento:**", datos["nombre_talento"])
+        st.write("**Método de asesorías:**", datos["metodo_asesorias"])
+        st.write("**Total equipos y materiales:**", formato_moneda_colombiana(datos["total_equipos_materiales"]))
+        st.write("**Total honorarios:**", formato_moneda_colombiana(datos["total_honorarios"]))
+        st.write("**Total general:**", formato_moneda_colombiana(datos["total_general"]))
+
+        st.markdown("### Asesorías y usos")
+        for idx, item in enumerate(datos["asesorias"], start=1):
+            st.write(f"**{idx}.** {item['fecha']} — {item['horas']} horas — {item['descripcion']}")
+
+        st.markdown("### Equipos y materiales")
+        if datos["equipos_materiales"]:
+            for idx, item in enumerate(datos["equipos_materiales"], start=1):
+                st.write(
+                    f"**{idx}.** {item['nombre']} — {item['cantidad_horas']} — "
+                    f"{formato_moneda_colombiana(item['valor_total'])}"
+                )
+        else:
+            st.info("No se registraron equipos o materiales.")
+
+        col_json, col_pdf = st.columns(2)
+
+        with col_json:
+            st.download_button(
+                label="Descargar datos en JSON",
+                data=json.dumps(datos, ensure_ascii=False, indent=4),
+                file_name="datos_acta_ejecucion.json",
+                mime="application/json"
+            )
+
+        with col_pdf:
+            if st.button("📄 Generar PDF del Acta de Ejecución"):
+                try:
+                    ruta_pdf = generar_pdf_acta_ejecucion(datos)
+                    st.session_state.ruta_pdf_acta_ejecucion_generado = ruta_pdf
+                    st.success(f"PDF generado correctamente: {ruta_pdf}")
+                except Exception as e:
+                    st.error(f"No se pudo generar el PDF: {e}")
+
+        if (
+            st.session_state.ruta_pdf_acta_ejecucion_generado
+            and Path(st.session_state.ruta_pdf_acta_ejecucion_generado).exists()
+        ):
+            ruta_pdf = st.session_state.ruta_pdf_acta_ejecucion_generado
+
+            with open(ruta_pdf, "rb") as f:
+                st.download_button(
+                    label="⬇️ Descargar PDF del Acta de Ejecución",
+                    data=f,
+                    file_name=Path(ruta_pdf).name,
+                    mime="application/pdf"
+                )
 
 elif st.session_state.fase_seleccionada == "cierre":
     st.warning("Este módulo se desarrollará después de validar los documentos de la fase de inicio.")
