@@ -2866,7 +2866,7 @@ def generar_pdf_estado_arte(datos: dict) -> str:
 # ACTA DE EJECUCIÓN - ASESORÍAS Y USOS
 # =====================================================
 
-VALOR_HORA_EXPERTO = 202121
+VALOR_HORA_EXPERTO = 25266
 
 
 def formato_moneda_colombiana(valor: float | int) -> str:
@@ -3426,11 +3426,11 @@ def generar_pdf_acta_ejecucion(datos: dict) -> str:
     firmas_data = [
         [
             Paragraph(f"{datos['nombre_experto']} - Experto", estilo_celda),
-            Paragraph("Talento Interlocutor", estilo_celda),
+            Paragraph(f"{datos['nombre_talento']} - Talento Interlocutor", estilo_celda),
         ],
         [
-            Paragraph("Firma: ________________________________", estilo_celda),
-            Paragraph(f"{datos['nombre_talento']}<br/>Firma: ________________________________", estilo_celda),
+            Paragraph("", estilo_celda),
+            Paragraph("", estilo_celda),
         ],
     ]
 
