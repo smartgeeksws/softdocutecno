@@ -129,6 +129,12 @@ if "datos_cronograma_generado" not in st.session_state:
 if "ruta_pdf_cronograma_generado" not in st.session_state:
     st.session_state.ruta_pdf_cronograma_generado = None
 
+if "datos_estado_arte_generado" not in st.session_state:
+    st.session_state.datos_estado_arte_generado = None
+
+if "ruta_pdf_estado_arte_generado" not in st.session_state:
+    st.session_state.ruta_pdf_estado_arte_generado = None
+
 
 # =====================================================
 # FUNCIONES GENERALES
@@ -2062,6 +2068,595 @@ def generar_pdf_cronograma(datos: dict) -> str:
     guardar_datos_json(datos_json, ruta="datos_cronograma_actividades.json")
 
     return ruta_pdf
+
+# =====================================================
+# ESTADO DEL ARTE - FASE DE PLANEACIÓN
+# =====================================================
+
+def limpiar_lista_tecnologias(texto: str) -> list[str]:
+    if not texto:
+        return []
+
+    separadores = ["\n", ";", ","]
+    tecnologias = [texto]
+
+    for sep in separadores:
+        nuevas = []
+        for item in tecnologias:
+            nuevas.extend(item.split(sep))
+        tecnologias = nuevas
+
+    return [t.strip() for t in tecnologias if t.strip()]
+
+
+def generar_estado_arte_modo_prueba(
+    nombre_proyecto: str,
+    codigo_proyecto: str,
+    descripcion_proyecto: str,
+    tecnologias_previstas: list[str],
+) -> dict:
+    tecnologias_base = tecnologias_previstas or ["Inteligencia artificial", "Aplicaciones web", "Bases de datos", "Visualización de información"]
+
+    return {
+        "introduccion": (
+            f"El presente Estado del Arte tiene como propósito establecer una base conceptual, técnica e investigativa "
+            f"para el proyecto {nombre_proyecto}, identificado con el código {codigo_proyecto}. El documento busca "
+            "revisar antecedentes, referentes nacionales e internacionales, tecnologías relevantes y tendencias "
+            "emergentes que permitan orientar la toma de decisiones durante la fase de planeación."
+        ),
+        "objetivos": [
+            "Identificar referentes técnicos, académicos y aplicados relacionados con el proyecto.",
+            "Analizar el contexto nacional e internacional del sector en el cual se desarrolla la iniciativa.",
+            "Reconocer tecnologías relevantes y emergentes que puedan fortalecer la solución propuesta.",
+            "Construir una base documental que oriente las decisiones técnicas de la fase de planeación."
+        ],
+        "antecedentes_contexto": (
+            f"{descripcion_proyecto}\n\n"
+            "A partir de la información suministrada, el proyecto se configura como una iniciativa de base tecnológica "
+            "orientada a resolver una necesidad específica mediante el uso de herramientas digitales, procesos de innovación "
+            "y desarrollo técnico. Su origen se relaciona con la identificación de una oportunidad de mejora en un contexto "
+            "productivo, educativo, ambiental, cultural o social, donde la incorporación de tecnología puede generar valor "
+            "agregado. El talento vinculado al proyecto cumple un papel central, dado que aporta conocimiento del problema, "
+            "experiencia del entorno y motivación para transformar la necesidad identificada en una solución viable. "
+            "Desde la perspectiva de innovación, el proyecto resulta pertinente porque combina componentes técnicos, "
+            "metodológicos y funcionales que pueden diferenciarlo de soluciones convencionales. La revisión de antecedentes "
+            "permite reconocer que iniciativas similares suelen requerir una adecuada articulación entre análisis del problema, "
+            "selección tecnológica, diseño de prototipos, validación funcional y documentación de resultados. En este sentido, "
+            "el Estado del Arte permite delimitar los enfoques existentes, identificar oportunidades de mejora y proponer "
+            "criterios técnicos que orienten el desarrollo del proyecto en sus siguientes fases."
+        ),
+        "contexto_nacional_internacional": (
+            "En el contexto nacional, el desarrollo de proyectos de base tecnológica se ha fortalecido gracias a la adopción "
+            "de herramientas digitales, procesos de automatización, analítica de datos, prototipado rápido e integración de "
+            "tecnologías emergentes en sectores productivos y sociales. En Colombia, las iniciativas orientadas a innovación "
+            "aplicada suelen articular actores académicos, institucionales y empresariales, promoviendo soluciones ajustadas "
+            "a las necesidades territoriales. En el ámbito internacional, se evidencia una tendencia creciente hacia el uso "
+            "de inteligencia artificial, sistemas inteligentes, plataformas web, aplicaciones móviles, Internet de las Cosas, "
+            "modelado digital y tecnologías de visualización para mejorar procesos, optimizar recursos y generar experiencias "
+            "más eficientes. Estas tendencias permiten ubicar el proyecto dentro de una dinámica global de transformación "
+            "digital e innovación aplicada."
+        ),
+        "proyectos_similares": [
+            {
+                "numero": 1,
+                "nombre": "Proyecto de innovación tecnológica aplicado al sector relacionado",
+                "enlace": "https://www.sena.edu.co",
+                "referencia_apa": "Servicio Nacional de Aprendizaje. (2025). Proyectos de innovación tecnológica. SENA."
+            },
+            {
+                "numero": 2,
+                "nombre": "Experiencia internacional de transformación digital aplicada",
+                "enlace": "https://www.oecd.org",
+                "referencia_apa": "OECD. (2024). Digital transformation and innovation practices. OECD Publishing."
+            },
+            {
+                "numero": 3,
+                "nombre": "Solución tecnológica basada en sistemas inteligentes",
+                "enlace": "https://ieeexplore.ieee.org",
+                "referencia_apa": "IEEE. (2024). Intelligent systems and applied technology cases. IEEE Xplore."
+            },
+            {
+                "numero": 4,
+                "nombre": "Aplicación de tecnologías emergentes en proyectos productivos",
+                "enlace": "https://www.sciencedirect.com",
+                "referencia_apa": "ScienceDirect. (2024). Emerging technologies in applied innovation. Elsevier."
+            },
+            {
+                "numero": 5,
+                "nombre": "Caso de uso de prototipado tecnológico para innovación",
+                "enlace": "https://scholar.google.com",
+                "referencia_apa": "Google Scholar. (2025). Applied prototyping and innovation projects."
+            },
+        ],
+        "tecnologias_relevantes": [
+            {
+                "tecnologia": tecnologia,
+                "analisis": (
+                    f"{tecnologia} se considera una tecnología relevante para el proyecto porque puede aportar capacidades "
+                    "técnicas orientadas a mejorar el diseño, desarrollo, validación o implementación de la solución. Su uso "
+                    "debe evaluarse de acuerdo con los recursos disponibles, el nivel de complejidad técnica y los resultados esperados."
+                ),
+                "cita_apa": "Autor, A. (2024). Aplicaciones tecnológicas emergentes en proyectos de innovación. Revista de Innovación Aplicada, 12(2), 45-60."
+            }
+            for tecnologia in tecnologias_base
+        ],
+        "tecnologias_emergentes": [
+            {
+                "tecnologia": "Inteligencia artificial generativa",
+                "analisis": "La inteligencia artificial generativa permite apoyar procesos de creación, análisis, síntesis documental y generación de contenidos técnicos, facilitando la producción de información estructurada para la toma de decisiones.",
+                "cita_apa": "OpenAI. (2025). Generative artificial intelligence applications in professional workflows. OpenAI."
+            },
+            {
+                "tecnologia": "Internet de las Cosas",
+                "analisis": "El Internet de las Cosas facilita la conexión de sensores, dispositivos y plataformas para capturar datos en tiempo real, lo cual puede fortalecer procesos de monitoreo, automatización y validación técnica.",
+                "cita_apa": "Atzori, L., Iera, A., & Morabito, G. (2024). Internet of Things: Concepts and applications. Computer Networks."
+            },
+            {
+                "tecnologia": "Analítica de datos",
+                "analisis": "La analítica de datos permite convertir información recolectada en indicadores, patrones y criterios de decisión, aportando evidencia para validar el comportamiento del proyecto o prototipo.",
+                "cita_apa": "Chen, M., Mao, S., & Liu, Y. (2024). Data analytics for intelligent systems. Information Sciences."
+            },
+            {
+                "tecnologia": "Modelado y simulación digital",
+                "analisis": "El modelado y la simulación permiten representar componentes, procesos o escenarios antes de su implementación física, reduciendo riesgos técnicos y costos de experimentación.",
+                "cita_apa": "Banks, J. (2023). Simulation and modeling for engineering applications. Engineering Systems Journal."
+            },
+            {
+                "tecnologia": "Computación en la nube",
+                "analisis": "La computación en la nube aporta escalabilidad, almacenamiento y disponibilidad para plataformas digitales, permitiendo desplegar soluciones con mayor flexibilidad operativa.",
+                "cita_apa": "Mell, P., & Grance, T. (2023). Cloud computing models and applications. National Institute of Standards and Technology."
+            },
+        ],
+        "conclusiones": (
+            "El Estado del Arte evidencia que el proyecto se articula con tendencias actuales de innovación tecnológica, "
+            "transformación digital y desarrollo de soluciones aplicadas. La revisión de referentes y tecnologías permite "
+            "identificar oportunidades para fortalecer el diseño, la validación y la implementación de la iniciativa. Asimismo, "
+            "la comparación entre tecnologías previstas y emergentes ofrece criterios para tomar decisiones técnicas más sólidas "
+            "durante la fase de planeación."
+        ),
+        "bibliografia": [
+            "Atzori, L., Iera, A., & Morabito, G. (2024). Internet of Things: Concepts and applications. Computer Networks.",
+            "Banks, J. (2023). Simulation and modeling for engineering applications. Engineering Systems Journal.",
+            "Chen, M., Mao, S., & Liu, Y. (2024). Data analytics for intelligent systems. Information Sciences.",
+            "Mell, P., & Grance, T. (2023). Cloud computing models and applications. National Institute of Standards and Technology.",
+            "OpenAI. (2025). Generative artificial intelligence applications in professional workflows. OpenAI.",
+        ],
+    }
+
+
+def generar_estado_arte_con_chatgpt(
+    nombre_proyecto: str,
+    codigo_proyecto: str,
+    descripcion_proyecto: str,
+    tecnologias_previstas: list[str],
+    modelo: str = "gpt-4.1-mini",
+) -> dict:
+    if OpenAI is None:
+        raise ImportError("No está instalada la librería openai. Instálala con: pip install openai")
+
+    api_key = obtener_api_key()
+    if not api_key:
+        raise ValueError("No se encontró OPENAI_API_KEY. Configúrala como variable de entorno o en .streamlit/secrets.toml.")
+
+    client = OpenAI(api_key=api_key)
+
+    instrucciones = """
+Actúa como investigador académico senior y formulador de proyectos de base tecnológica para la Red Tecnoparque SENA.
+
+Debes generar un Estado del Arte profesional, académico e investigativo en español.
+Usa búsqueda web para encontrar referentes públicos reales y artículos científicos o técnicos verificables.
+No inventes enlaces.
+No inventes referencias.
+Si una fuente no puede ser verificada, no la incluyas.
+Usa normas APA 7.
+El apartado de Antecedentes y Contexto debe tener mínimo 500 palabras.
+La tabla de proyectos similares debe tener mínimo 5 proyectos o iniciativas reales con enlace de consulta.
+El estado del arte tecnológico debe incluir las tecnologías previstas por el usuario y contrastarlas con 5 o 6 tecnologías emergentes del mercado.
+Incluye citas APA dentro del texto cuando corresponda.
+Responde únicamente en JSON válido, sin markdown, sin texto adicional.
+"""
+
+    entrada = f"""
+Genera un Estado del Arte con la siguiente estructura:
+
+Datos del proyecto:
+- Nombre del proyecto: {nombre_proyecto}
+- Código del proyecto: {codigo_proyecto}
+- Descripción detallada: {descripcion_proyecto}
+- Tecnologías previstas por el usuario: {", ".join(tecnologias_previstas)}
+
+Estructura requerida:
+1. introduccion
+2. objetivos: lista de 4 objetivos del estado del arte.
+3. antecedentes_contexto: mínimo 500 palabras, usando la descripción detallada. Debe ampliar origen, talento, necesidad, innovación y pertinencia.
+4. contexto_nacional_internacional
+5. proyectos_similares: mínimo 5 objetos con numero, nombre, enlace, descripcion_breve, referencia_apa.
+6. tecnologias_relevantes: tecnologías sugeridas por el usuario. Cada objeto debe tener tecnologia, analisis y cita_apa.
+7. tecnologias_emergentes: 5 o 6 tecnologías emergentes comparables. Cada objeto debe tener tecnologia, analisis y cita_apa.
+8. articulos_validacion: tabla con mínimo 5 artículos científicos o técnicos. Cada objeto debe tener numero, tecnologia, articulo, enlace, referencia_apa.
+9. conclusiones
+10. bibliografia: listado final APA 7 incluyendo todas las fuentes consultadas.
+
+Formato JSON obligatorio:
+{{
+  "introduccion": "...",
+  "objetivos": ["...", "...", "...", "..."],
+  "antecedentes_contexto": "...",
+  "contexto_nacional_internacional": "...",
+  "proyectos_similares": [
+    {{
+      "numero": 1,
+      "nombre": "...",
+      "enlace": "...",
+      "descripcion_breve": "...",
+      "referencia_apa": "..."
+    }}
+  ],
+  "tecnologias_relevantes": [
+    {{
+      "tecnologia": "...",
+      "analisis": "...",
+      "cita_apa": "..."
+    }}
+  ],
+  "tecnologias_emergentes": [
+    {{
+      "tecnologia": "...",
+      "analisis": "...",
+      "cita_apa": "..."
+    }}
+  ],
+  "articulos_validacion": [
+    {{
+      "numero": 1,
+      "tecnologia": "...",
+      "articulo": "...",
+      "enlace": "...",
+      "referencia_apa": "..."
+    }}
+  ],
+  "conclusiones": "...",
+  "bibliografia": ["...", "..."]
+}}
+"""
+
+    try:
+        respuesta = client.responses.create(
+            model=modelo,
+            tools=[{"type": "web_search_preview"}],
+            input=[
+                {"role": "system", "content": instrucciones},
+                {"role": "user", "content": entrada},
+            ],
+            temperature=0.25,
+        )
+    except Exception:
+        # Si la cuenta o el modelo no tiene habilitada búsqueda web, hace generación sin herramienta.
+        respuesta = client.responses.create(
+            model=modelo,
+            instructions=instrucciones + "\nSi no tienes acceso a búsqueda web, aclara dentro del JSON que las fuentes deben ser verificadas manualmente.",
+            input=entrada,
+            temperature=0.25,
+        )
+
+    texto = limpiar_respuesta_json(respuesta.output_text)
+
+    try:
+        datos = json.loads(texto)
+    except json.JSONDecodeError:
+        raise ValueError("La respuesta de la IA no llegó en JSON válido. Intenta nuevamente o activa modo prueba.")
+
+    campos_requeridos = [
+        "introduccion",
+        "objetivos",
+        "antecedentes_contexto",
+        "contexto_nacional_internacional",
+        "proyectos_similares",
+        "tecnologias_relevantes",
+        "tecnologias_emergentes",
+        "articulos_validacion",
+        "conclusiones",
+        "bibliografia",
+    ]
+
+    for campo in campos_requeridos:
+        if campo not in datos:
+            datos[campo] = [] if campo in [
+                "objetivos",
+                "proyectos_similares",
+                "tecnologias_relevantes",
+                "tecnologias_emergentes",
+                "articulos_validacion",
+                "bibliografia",
+            ] else ""
+
+    return datos
+
+
+def generar_pdf_estado_arte(datos: dict) -> str:
+    if canvas is None:
+        raise ImportError("No está instalada reportlab. Instálala con: pip install reportlab")
+
+    Path(CARPETA_SALIDA).mkdir(parents=True, exist_ok=True)
+
+    nombre_archivo = (
+        f"Estado_del_Arte_"
+        f"{safe_filename(datos.get('codigo_proyecto', 'proyecto'))}_"
+        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    )
+    ruta_pdf = str(Path(CARPETA_SALIDA) / nombre_archivo)
+
+    page_width, page_height = letter
+
+    doc = SimpleDocTemplate(
+        ruta_pdf,
+        pagesize=letter,
+        rightMargin=2.0 * cm,
+        leftMargin=2.0 * cm,
+        topMargin=2.7 * cm,
+        bottomMargin=1.7 * cm,
+    )
+
+    def encabezado_pie(c, doc):
+        c.saveState()
+
+        ruta_logo = obtener_ruta_logo_tecnoparque()
+        if ruta_logo:
+            try:
+                logo = ImageReader(ruta_logo)
+                c.drawImage(
+                    logo,
+                    1.5 * cm,
+                    page_height - 2.1 * cm,
+                    width=5.8 * cm,
+                    height=1.4 * cm,
+                    preserveAspectRatio=True,
+                    mask="auto",
+                )
+            except Exception:
+                c.setFont("Helvetica-Bold", 12)
+                c.setFillColor(colors.HexColor("#39a935"))
+                c.drawString(1.5 * cm, page_height - 1.4 * cm, "SENA Tecnoparque")
+                c.setFillColor(colors.black)
+        else:
+            c.setFont("Helvetica-Bold", 12)
+            c.setFillColor(colors.HexColor("#39a935"))
+            c.drawString(1.5 * cm, page_height - 1.4 * cm, "SENA Tecnoparque")
+            c.setFillColor(colors.black)
+
+        c.setFont("Helvetica", 8)
+        c.setFillColor(colors.grey)
+        c.drawCentredString(page_width / 2, 0.8 * cm, "FORMATO ESTADO DEL ARTE - RED TECNOPARQUE COLOMBIA")
+        c.setFillColor(colors.black)
+
+        c.restoreState()
+
+    estilo_titulo = ParagraphStyle(
+        name="TituloEstadoArte",
+        fontName="Helvetica-Bold",
+        fontSize=13,
+        leading=16,
+        alignment=TA_CENTER,
+        spaceAfter=10,
+    )
+
+    estilo_subtitulo = ParagraphStyle(
+        name="SubtituloEstadoArte",
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        leading=14,
+        alignment=TA_LEFT,
+        spaceBefore=8,
+        spaceAfter=6,
+    )
+
+    estilo_normal = ParagraphStyle(
+        name="NormalEstadoArte",
+        fontName="Helvetica",
+        fontSize=9.5,
+        leading=13,
+        alignment=TA_JUSTIFY,
+        spaceAfter=6,
+    )
+
+    estilo_tabla = ParagraphStyle(
+        name="TablaEstadoArte",
+        fontName="Helvetica",
+        fontSize=7.2,
+        leading=8.6,
+        alignment=TA_LEFT,
+    )
+
+    estilo_tabla_centro = ParagraphStyle(
+        name="TablaCentroEstadoArte",
+        fontName="Helvetica",
+        fontSize=7.2,
+        leading=8.6,
+        alignment=TA_CENTER,
+    )
+
+    estilo_tabla_header = ParagraphStyle(
+        name="TablaHeaderEstadoArte",
+        fontName="Helvetica-Bold",
+        fontSize=7.4,
+        leading=8.8,
+        alignment=TA_CENTER,
+    )
+
+    historia = []
+
+    contenido = datos["contenido_estado_arte"]
+
+    historia.append(Paragraph("FORMATO ESTADO DEL ARTE<br/>RED TECNOPARQUE COLOMBIA", estilo_titulo))
+
+    tabla_info = Table(
+        [
+            [
+                Paragraph("<b>CÓDIGO DEL PROYECTO:</b>", estilo_tabla_header),
+                Paragraph(datos["codigo_proyecto"], estilo_tabla),
+            ],
+            [
+                Paragraph("<b>NOMBRE DEL PROYECTO:</b>", estilo_tabla_header),
+                Paragraph(datos["nombre_proyecto"], estilo_tabla),
+            ],
+            [
+                Paragraph("<b>NODO:</b>", estilo_tabla_header),
+                Paragraph("ANGOSTURA", estilo_tabla),
+            ],
+            [
+                Paragraph("<b>FECHA:</b>", estilo_tabla_header),
+                Paragraph(datos["fecha_documento"].strftime("%B %Y").upper(), estilo_tabla),
+            ],
+        ],
+        colWidths=[5.0 * cm, 11.8 * cm],
+    )
+
+    tabla_info.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
+                ("BACKGROUND", (0, 0), (0, -1), colors.whitesmoke),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+
+    historia.append(tabla_info)
+    historia.append(Spacer(1, 0.3 * cm))
+
+    historia.append(Paragraph("1. Introducción", estilo_subtitulo))
+    historia.append(Paragraph(contenido.get("introduccion", ""), estilo_normal))
+
+    historia.append(Paragraph("2. Objetivos del Estado del Arte", estilo_subtitulo))
+    for objetivo in contenido.get("objetivos", []):
+        historia.append(Paragraph(f"• {objetivo}", estilo_normal))
+
+    historia.append(Paragraph("3. Antecedentes y Contexto", estilo_subtitulo))
+    historia.append(Paragraph(contenido.get("antecedentes_contexto", ""), estilo_normal))
+
+    historia.append(Paragraph("4. Contexto Nacional e Internacional", estilo_subtitulo))
+    historia.append(Paragraph(contenido.get("contexto_nacional_internacional", ""), estilo_normal))
+
+    historia.append(Paragraph("5. Proyectos Similares", estilo_subtitulo))
+
+    proyectos_data = [
+        [
+            Paragraph("<b>No.</b>", estilo_tabla_header),
+            Paragraph("<b>Nombre del Proyecto</b>", estilo_tabla_header),
+            Paragraph("<b>Enlace de consulta</b>", estilo_tabla_header),
+        ]
+    ]
+
+    for item in contenido.get("proyectos_similares", []):
+        proyectos_data.append(
+            [
+                Paragraph(str(item.get("numero", "")), estilo_tabla_centro),
+                Paragraph(str(item.get("nombre", "")), estilo_tabla),
+                Paragraph(str(item.get("enlace", "")), estilo_tabla),
+            ]
+        )
+
+    tabla_proyectos = Table(
+        proyectos_data,
+        colWidths=[1.2 * cm, 8.0 * cm, 7.6 * cm],
+        repeatRows=1,
+    )
+
+    tabla_proyectos.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+
+    historia.append(tabla_proyectos)
+
+    historia.append(Paragraph("6. Estado del Arte de Tecnologías Relevantes", estilo_subtitulo))
+
+    historia.append(Paragraph("6.1 Tecnologías previstas para el proyecto", estilo_subtitulo))
+    for item in contenido.get("tecnologias_relevantes", []):
+        historia.append(Paragraph(f"<b>{item.get('tecnologia', '')}.</b> {item.get('analisis', '')} ({item.get('cita_apa', '')})", estilo_normal))
+
+    historia.append(Paragraph("6.2 Tecnologías emergentes contrastadas", estilo_subtitulo))
+    for item in contenido.get("tecnologias_emergentes", []):
+        historia.append(Paragraph(f"<b>{item.get('tecnologia', '')}.</b> {item.get('analisis', '')} ({item.get('cita_apa', '')})", estilo_normal))
+
+    historia.append(Paragraph("6.3 Artículos científicos y técnicos de validación", estilo_subtitulo))
+
+    articulos_data = [
+        [
+            Paragraph("<b>No.</b>", estilo_tabla_header),
+            Paragraph("<b>Tecnología</b>", estilo_tabla_header),
+            Paragraph("<b>Artículo / Fuente</b>", estilo_tabla_header),
+            Paragraph("<b>Enlace</b>", estilo_tabla_header),
+        ]
+    ]
+
+    for item in contenido.get("articulos_validacion", []):
+        articulos_data.append(
+            [
+                Paragraph(str(item.get("numero", "")), estilo_tabla_centro),
+                Paragraph(str(item.get("tecnologia", "")), estilo_tabla),
+                Paragraph(str(item.get("articulo", "")), estilo_tabla),
+                Paragraph(str(item.get("enlace", "")), estilo_tabla),
+            ]
+        )
+
+    tabla_articulos = Table(
+        articulos_data,
+        colWidths=[1.1 * cm, 3.8 * cm, 6.0 * cm, 5.9 * cm],
+        repeatRows=1,
+    )
+
+    tabla_articulos.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+
+    historia.append(tabla_articulos)
+
+    historia.append(Paragraph("7. Conclusiones", estilo_subtitulo))
+    historia.append(Paragraph(contenido.get("conclusiones", ""), estilo_normal))
+
+    historia.append(Paragraph("8. Referencias Bibliográficas", estilo_subtitulo))
+    for referencia in contenido.get("bibliografia", []):
+        historia.append(Paragraph(f"• {referencia}", estilo_normal))
+
+    doc.build(
+        historia,
+        onFirstPage=encabezado_pie,
+        onLaterPages=encabezado_pie,
+    )
+
+    datos_json = dict(datos)
+    datos_json["fecha_documento"] = datos["fecha_documento"].strftime("%d/%m/%Y")
+    datos_json["ruta_pdf"] = ruta_pdf
+
+    guardar_datos_json(datos_json, ruta="datos_estado_arte.json")
+
+    return ruta_pdf
+
+
 # =====================================================
 # SIDEBAR DE CONFIGURACIÓN
 # =====================================================
