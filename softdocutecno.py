@@ -3823,6 +3823,14 @@ def generar_pdf_acta_cierre(datos: dict) -> str:
     draw_cell(c, x0 + col_num + col_obj, y - h, col_cumple, h, "Cumplió", font="Helvetica-Bold", size=FONT_SMALL, center=True)
     y -= h
 
+    for idx, obj in enumerate(objetivos_iniciales, start=1):
+        h = alto_texto_local(obj, col_obj, base=28, font_size=FONT_SMALL, max_h=58)
+        y = asegurar_espacio(y, h)
+        draw_cell(c, x0, y - h, col_num, h, str(idx), font="Helvetica-Bold", size=FONT_SMALL, center=True)
+        draw_cell(c, x0 + col_num, y - h, col_obj, h, obj, size=FONT_SMALL)
+        draw_cell(c, x0 + col_num + col_obj, y - h, col_cumple, h, "[X]", font="Helvetica-Bold", size=FONT_SMALL, center=True)
+        y -= h
+
 for idx, obj in enumerate(objetivos_iniciales, start=1):
     h = alto_texto_local(obj, col_obj, base=28, font_size=FONT_SMALL, max_h=58)
     y = asegurar_espacio(y, h)
@@ -5392,46 +5400,7 @@ elif st.session_state.fase_seleccionada == "cierre":
 
             datos_acta_cierre = {
                 "tipo_documento": "Acta de Cierre",
-                # Objetivo de cierre
-h = 22
-y = asegurar_espacio(y, h)
-draw_cell(c, x0, y - h, table_w, h, "OBJETIVO DEL CIERRE", font="Helvetica-Bold", size=FONT_SECTION, center=True)
-y -= h
-
-objetivo_cierre = datos.get("objetivo_cierre", "")
-h = alto_texto_local(objetivo_cierre, table_w, base=42, font_size=FONT_BODY, max_h=72)
-y = asegurar_espacio(y, h)
-draw_cell(c, x0, y - h, table_w, h, objetivo_cierre, size=FONT_BODY)
-y -= h
-
-# Objetivos iniciales y cumplimiento
-h = 22
-y = asegurar_espacio(y, h)
-draw_cell(c, x0, y - h, table_w, h, "OBJETIVOS INICIALES DEL PROYECTO Y CUMPLIMIENTO", font="Helvetica-Bold", size=FONT_SECTION, center=True)
-y -= h
-
-objetivos_iniciales = datos.get("objetivos_iniciales", [])
-if not objetivos_iniciales:
-    objetivos_iniciales = ["No se registraron objetivos iniciales."]
-
-col_num = 38
-col_obj = table_w - 130
-col_cumple = 92
-
-h = 24
-y = asegurar_espacio(y, h)
-draw_cell(c, x0, y - h, col_num, h, "No.", font="Helvetica-Bold", size=FONT_SMALL, center=True)
-draw_cell(c, x0 + col_num, y - h, col_obj, h, "Objetivo inicial", font="Helvetica-Bold", size=FONT_SMALL, center=True)
-draw_cell(c, x0 + col_num + col_obj, y - h, col_cumple, h, "Cumplió", font="Helvetica-Bold", size=FONT_SMALL, center=True)
-y -= h
-
-for idx, obj in enumerate(objetivos_iniciales, start=1):
-    h = alto_texto_local(obj, col_obj, base=28, font_size=FONT_SMALL, max_h=58)
-    y = asegurar_espacio(y, h)
-    draw_cell(c, x0, y - h, col_num, h, str(idx), font="Helvetica-Bold", size=FONT_SMALL, center=True)
-    draw_cell(c, x0 + col_num, y - h, col_obj, h, obj, size=FONT_SMALL)
-    draw_cell(c, x0 + col_num + col_obj, y - h, col_cumple, h, "[X]", font="Helvetica-Bold", size=FONT_SMALL, center=True)
-    y -= h
+                "titulo_acta": f"ACTA No. 03 del proyecto No {codigo_proyecto}",
                 "codigo_proyecto": codigo_proyecto,
                 "nombre_proyecto": nombre_proyecto,
                 "fecha_acta": fecha_acta.strftime("%d/%m/%Y"),
