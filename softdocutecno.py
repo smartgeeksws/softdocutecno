@@ -3831,28 +3831,28 @@ def generar_pdf_acta_cierre(datos: dict) -> str:
         draw_cell(c, x0 + col_num + col_obj, y - h, col_cumple, h, "[X]", font="Helvetica-Bold", size=FONT_SMALL, center=True)
         y -= h
 
-for idx, obj in enumerate(objetivos_iniciales, start=1):
-    h = alto_texto_local(obj, col_obj, base=28, font_size=FONT_SMALL, max_h=58)
-    y = asegurar_espacio(y, h)
-    draw_cell(c, x0, y - h, col_num, h, str(idx), font="Helvetica-Bold", size=FONT_SMALL, center=True)
-    draw_cell(c, x0 + col_num, y - h, col_obj, h, obj, size=FONT_SMALL)
-    draw_cell(c, x0 + col_num + col_obj, y - h, col_cumple, h, "[X]", font="Helvetica-Bold", size=FONT_SMALL, center=True)
-    y -= h
+    for idx, obj in enumerate(objetivos_iniciales, start=1):
+        h = alto_texto_local(obj, col_obj, base=28, font_size=FONT_SMALL, max_h=58)
+        y = asegurar_espacio(y, h)
+        draw_cell(c, x0, y - h, col_num, h, str(idx), font="Helvetica-Bold", size=FONT_SMALL, center=True)
+        draw_cell(c, x0 + col_num, y - h, col_obj, h, obj, size=FONT_SMALL)
+        draw_cell(c, x0 + col_num + col_obj, y - h, col_cumple, h, "[X]", font="Helvetica-Bold", size=FONT_SMALL, center=True)
+        y -= h
 
-    # Evidencias
-    h = 22
-    y = asegurar_espacio(y, h)
-    draw_cell(c, x0, y - h, table_w, h, "EVIDENCIAS DEL PROYECTO", font="Helvetica-Bold", size=FONT_SECTION, center=True)
-    y -= h
+        # Evidencias
+        h = 22
+        y = asegurar_espacio(y, h)
+        draw_cell(c, x0, y - h, table_w, h, "EVIDENCIAS DEL PROYECTO", font="Helvetica-Bold", size=FONT_SECTION, center=True)
+        y -= h
 
-    contenido = datos.get("evidencias_generadas", {})
+        contenido = datos.get("evidencias_generadas", {})
 
-    evidencias = [
-        ("Evidencias de Normatividad:", contenido.get("evidencias_normatividad", "")),
-        ("Evidencias de Modelo de Negocio:", contenido.get("evidencias_modelo_negocio", "")),
-        ("Evidencias de Pruebas Documentadas:", contenido.get("evidencias_pruebas_documentadas", "")),
-        ("Evidencias de Prototipo:", contenido.get("evidencias_prototipo", "")),
-    ]
+        evidencias = [
+            ("Evidencias de Normatividad:", contenido.get("evidencias_normatividad", "")),
+            ("Evidencias de Modelo de Negocio:", contenido.get("evidencias_modelo_negocio", "")),
+            ("Evidencias de Pruebas Documentadas:", contenido.get("evidencias_pruebas_documentadas", "")),
+            ("Evidencias de Prototipo:", contenido.get("evidencias_prototipo", "")),
+        ]
 
     for titulo, texto in evidencias:
         h = alto_texto_local(texto, table_w, base=44, font_size=FONT_TINY, label=titulo, max_h=86)
