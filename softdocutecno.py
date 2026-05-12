@@ -3472,42 +3472,57 @@ def generar_pdf_acta_ejecucion(datos: dict) -> str:
 FORMATO_ACTA_CIERRE = "GOR-F-084 V02"
 
 
-def generar_objetivos_cierre(nombre_proyecto: str) -> list[str]:
-    return [
-        f"Verificar el cumplimiento de los objetivos propuestos para el proyecto {nombre_proyecto}.",
-        f"Consolidar las evidencias técnicas, documentales y funcionales derivadas del desarrollo del proyecto {nombre_proyecto}.",
-        f"Validar el nivel de madurez tecnológica alcanzado por el proyecto {nombre_proyecto}, de acuerdo con los resultados obtenidos.",
-        f"Formalizar el cierre técnico del proyecto {nombre_proyecto}, dejando constancia de los productos, evidencias y conclusiones generadas.",
-    ]
+def generar_objetivo_cierre(codigo_proyecto: str, nombre_proyecto: str) -> str:
+    return (
+        f"Dar por finalizada la ejecución del proyecto {codigo_proyecto} - {nombre_proyecto}, "
+        "revisando los objetivos alcanzados, entregables, desempeño, y obtener la aprobación formal "
+        "del cierre del proyecto."
+    )
 
 
 def generar_evidencias_cierre_modo_prueba(nombre_proyecto: str, evidencias_producto: str) -> dict:
-    conclusion_adicional = ""
-    if "susceptible de inscribir un nuevo proyecto" in evidencias_producto.lower():
-        conclusion_adicional = (
-            "Adicionalmente, se identifica que el proyecto es susceptible de inscribir un nuevo proyecto "
-            "para continuar su fortalecimiento, escalamiento o validación técnica."
+    texto_lower = evidencias_producto.lower()
+
+    if (
+        "susceptible de inscribir un nuevo proyecto" in texto_lower
+        or "inscribir un nuevo proyecto" in texto_lower
+    ):
+        if not datos["conclusion_adicional"]:
+            datos["conclusion_adicional"] = (
+                "Adicionalmente, se identifica que el proyecto es susceptible de inscribir un nuevo proyecto "
+                "o una nueva idea de base tecnológica, con el fin de continuar su fortalecimiento, validación, "
+                "escalamiento o desarrollo de nuevas funcionalidades."
+            )
+    else:
+        datos["conclusion_adicional"] = (
+            "Se evaluará la posibilidad de inscribir un nuevo prototipo, idea o proyecto de base tecnológica, "
+            "de acuerdo con los resultados obtenidos, las oportunidades de mejora identificadas y el potencial "
+            "de continuidad técnica del desarrollo alcanzado."
         )
 
     return {
         "evidencias_normatividad": (
-            "Se identifican como referentes técnicos aplicables las Normas Técnicas Colombianas NTC relacionadas "
-            "con gestión de calidad, documentación técnica, seguridad en el uso de productos o procesos, y buenas "
-            "prácticas de validación, según la naturaleza del prototipo desarrollado. De manera complementaria, "
-            "podrán considerarse normas internacionales ISO aplicables a diseño, documentación, pruebas, seguridad, "
-            "calidad, trazabilidad o validación funcional del producto de base tecnológica."
+            f"De acuerdo con la naturaleza técnica del proyecto {nombre_proyecto}, se recomienda considerar "
+            "como referentes de cumplimiento y validación las Normas Técnicas Colombianas NTC relacionadas con "
+            "gestión de calidad, documentación técnica, seguridad, requisitos de producto, trazabilidad, "
+            "medición, validación funcional y buenas prácticas de desarrollo tecnológico. Según el tipo de "
+            "prototipo, también pueden tomarse como referencia normas internacionales ISO aplicables a sistemas "
+            "de gestión de calidad, diseño de productos, procesos de ensayo, documentación de resultados, "
+            "seguridad de operación, protección de usuarios, interoperabilidad tecnológica o validación de "
+            "componentes. Estas referencias permiten orientar la verificación del prototipo, la organización "
+            "de evidencias, la estandarización de pruebas y la trazabilidad del proceso técnico desarrollado."
         ),
         "evidencias_modelo_negocio": (
             "Se adjunta el Modelo Canvas aplicado al Proyecto de Base Tecnológica, como herramienta de análisis "
-            "para la identificación de propuesta de valor, segmentos de cliente, canales, recursos clave, actividades "
-            "clave, aliados estratégicos, estructura de costos y fuentes de ingreso."
+            "para la identificación de propuesta de valor, segmentos de cliente, canales, recursos clave, "
+            "actividades clave, aliados estratégicos, estructura de costos y fuentes de ingreso."
         ),
         "evidencias_pruebas_documentadas": (
             "Se adjunta el Informe Técnico Final, en el cual se documenta la metodología desarrollada, los procesos "
             "de validación, las pruebas realizadas, los resultados obtenidos y la implementación técnica del proyecto."
         ),
         "evidencias_prototipo": (
-            "A partir de la información suministrada, se identifican como entregables del prototipo los siguientes: "
+            "Como evidencias del prototipo y entregables desarrollados durante la ejecución del proyecto, se reportan: "
             f"{evidencias_producto}"
         ),
         "conclusion_adicional": conclusion_adicional,
@@ -3551,7 +3566,7 @@ Genera un JSON con esta estructura exacta:
   "evidencias_normatividad": "Redacción técnica sobre NTC o normas internacionales aplicables al tipo de prototipo.",
   "evidencias_modelo_negocio": "Frase estándar indicando que se adjunta Modelo Canvas aplicado al PBT.",
   "evidencias_pruebas_documentadas": "Frase indicando que se adjunta Informe Técnico Final con metodología, validación e implementación.",
-  "evidencias_prototipo": "Lista redactada de entregables específicos extraídos del texto de evidencias del producto.",
+  "evidencias_prototipo": "Lista redactada de entregables específicos extraídos del texto de evidencias del producto. Debe entenderse como evidencias de prototipo y entregables desarrollados.",
   "conclusion_adicional": "Conclusión adicional solo si el texto menciona que el proyecto es susceptible de inscribir un nuevo proyecto. Si no aplica, dejar vacío."
 }}
 """
@@ -3613,8 +3628,8 @@ def generar_pdf_acta_cierre(datos: dict) -> str:
     y_top_content = 705
     y_safe_bottom = 58
 
-    FONT_TITLE = 8.5
-    FONT_SECTION = 8.0
+    FONT_TITLE = 10.5
+    FONT_SECTION = 10.5
     FONT_BODY = 7.1
     FONT_SMALL = 6.7
     FONT_TINY = 6.3
@@ -3649,16 +3664,16 @@ def generar_pdf_acta_cierre(datos: dict) -> str:
     # Título
     h = 22
     draw_cell(
-        c,
-        x0,
-        y - h,
-        table_w,
-        h,
-        f"ACTA N° 3 - {datos.get('codigo_proyecto', '')}",
-        font="Helvetica-Bold",
-        size=FONT_TITLE,
-        center=True,
-    )
+    c,
+    x0,
+    y - h,
+    table_w,
+    h,
+    f"ACTA No. 03 del proyecto No {datos.get('codigo_proyecto', '')}",
+    font="Helvetica-Bold",
+    size=FONT_TITLE,
+    center=True,
+)
     y -= h
 
     # Nombre del comité o reunión
@@ -3729,7 +3744,10 @@ def generar_pdf_acta_cierre(datos: dict) -> str:
     y -= h
 
     # Objetivo de la reunión
-    objetivo_reunion = f"Realizar el cierre técnico del proyecto {datos.get('codigo_proyecto', '')} - {datos.get('nombre_proyecto', '')}."
+    objetivo_reunion = datos.get(
+    "objetivo_cierre",
+    f"Dar por finalizada la ejecución del proyecto {datos.get('codigo_proyecto', '')} - {datos.get('nombre_proyecto', '')}, revisando los objetivos alcanzados, entregables, desempeño, y obtener la aprobación formal del cierre del proyecto."
+)
     h = alto_texto_local(
         objetivo_reunion,
         table_w,
@@ -3772,24 +3790,46 @@ def generar_pdf_acta_cierre(datos: dict) -> str:
     )
     y -= h
 
-    # Objetivos
+    # Objetivo de cierre
     h = 22
     y = asegurar_espacio(y, h)
-    draw_cell(c, x0, y - h, table_w, h, "OBJETIVOS DEL PROYECTO", font="Helvetica-Bold", size=FONT_SECTION, center=True)
+    draw_cell(c, x0, y - h, table_w, h, "OBJETIVO DEL CIERRE", font="Helvetica-Bold", size=FONT_SECTION, center=True)
     y -= h
 
-    objetivos = datos.get("objetivos", [])[:4]
-    while len(objetivos) < 4:
-        objetivos.append("")
+    objetivo_cierre = datos.get("objetivo_cierre", "")
+    h = alto_texto_local(objetivo_cierre, table_w, base=42, font_size=FONT_BODY, max_h=72)
+    y = asegurar_espacio(y, h)
+    draw_cell(c, x0, y - h, table_w, h, objetivo_cierre, size=FONT_BODY)
+    y -= h
 
-    num_w = 44
-    obj_w = table_w - num_w
-    for idx, obj in enumerate(objetivos, start=1):
-        h = alto_texto_local(obj, obj_w, base=24, font_size=FONT_SMALL, max_h=42)
-        y = asegurar_espacio(y, h)
-        draw_cell(c, x0, y - h, num_w, h, str(idx), font="Helvetica-Bold", size=FONT_SMALL, center=True)
-        draw_cell(c, x0 + num_w, y - h, obj_w, h, obj, size=FONT_SMALL)
-        y -= h
+    # Objetivos iniciales y cumplimiento
+    h = 22
+    y = asegurar_espacio(y, h)
+    draw_cell(c, x0, y - h, table_w, h, "OBJETIVOS INICIALES DEL PROYECTO Y CUMPLIMIENTO", font="Helvetica-Bold", size=FONT_SECTION, center=True)
+    y -= h
+
+    objetivos_iniciales = datos.get("objetivos_iniciales", [])
+    if not objetivos_iniciales:
+        objetivos_iniciales = ["No se registraron objetivos iniciales."]
+
+    col_num = 38
+    col_obj = table_w - 130
+    col_cumple = 92
+
+    h = 24
+    y = asegurar_espacio(y, h)
+    draw_cell(c, x0, y - h, col_num, h, "No.", font="Helvetica-Bold", size=FONT_SMALL, center=True)
+    draw_cell(c, x0 + col_num, y - h, col_obj, h, "Objetivo inicial", font="Helvetica-Bold", size=FONT_SMALL, center=True)
+    draw_cell(c, x0 + col_num + col_obj, y - h, col_cumple, h, "Cumplió", font="Helvetica-Bold", size=FONT_SMALL, center=True)
+    y -= h
+
+for idx, obj in enumerate(objetivos_iniciales, start=1):
+    h = alto_texto_local(obj, col_obj, base=28, font_size=FONT_SMALL, max_h=58)
+    y = asegurar_espacio(y, h)
+    draw_cell(c, x0, y - h, col_num, h, str(idx), font="Helvetica-Bold", size=FONT_SMALL, center=True)
+    draw_cell(c, x0 + col_num, y - h, col_obj, h, obj, size=FONT_SMALL)
+    draw_cell(c, x0 + col_num + col_obj, y - h, col_cumple, h, "[X]", font="Helvetica-Bold", size=FONT_SMALL, center=True)
+    y -= h
 
     # Evidencias
     h = 22
@@ -5284,7 +5324,11 @@ elif st.session_state.fase_seleccionada == "cierre":
                     value=0,
                     step=10000
                 )
-
+            objetivos_iniciales = st.text_area(
+                "Objetivos iniciales del proyecto",
+                placeholder="Copia aquí los objetivos iniciales del proyecto. Cada objetivo puede ir en una línea diferente.",
+                height=140
+)
             evidencias_producto = st.text_area(
                 "Evidencias del Producto",
                 placeholder=(
@@ -5305,6 +5349,7 @@ elif st.session_state.fase_seleccionada == "cierre":
                 "Nombre del proyecto": nombre_proyecto,
                 "Nombre del talento": nombre_talento,
                 "Nombre del experto": nombre_experto,
+                "Objetivos iniciales del proyecto": objetivos_iniciales,
                 "Evidencias del Producto": evidencias_producto,
             }
 
@@ -5317,7 +5362,13 @@ elif st.session_state.fase_seleccionada == "cierre":
                 st.stop()
 
             hora_fin = calcular_hora_fin(fecha_acta, hora_inicio)
-            objetivos = generar_objetivos_cierre(nombre_proyecto)
+            objetivo_cierre = generar_objetivo_cierre(codigo_proyecto, nombre_proyecto)
+
+            objetivos_lista = [
+                obj.strip()
+                for obj in objetivos_iniciales.replace("•", "\n").replace(";", "\n").split("\n")
+                if obj.strip()
+            ]
 
             with st.spinner("Generando evidencias del acta de cierre con IA..."):
                 try:
@@ -5341,7 +5392,46 @@ elif st.session_state.fase_seleccionada == "cierre":
 
             datos_acta_cierre = {
                 "tipo_documento": "Acta de Cierre",
-                "titulo_acta": f"Acta N° 3 - {codigo_proyecto}",
+                # Objetivo de cierre
+h = 22
+y = asegurar_espacio(y, h)
+draw_cell(c, x0, y - h, table_w, h, "OBJETIVO DEL CIERRE", font="Helvetica-Bold", size=FONT_SECTION, center=True)
+y -= h
+
+objetivo_cierre = datos.get("objetivo_cierre", "")
+h = alto_texto_local(objetivo_cierre, table_w, base=42, font_size=FONT_BODY, max_h=72)
+y = asegurar_espacio(y, h)
+draw_cell(c, x0, y - h, table_w, h, objetivo_cierre, size=FONT_BODY)
+y -= h
+
+# Objetivos iniciales y cumplimiento
+h = 22
+y = asegurar_espacio(y, h)
+draw_cell(c, x0, y - h, table_w, h, "OBJETIVOS INICIALES DEL PROYECTO Y CUMPLIMIENTO", font="Helvetica-Bold", size=FONT_SECTION, center=True)
+y -= h
+
+objetivos_iniciales = datos.get("objetivos_iniciales", [])
+if not objetivos_iniciales:
+    objetivos_iniciales = ["No se registraron objetivos iniciales."]
+
+col_num = 38
+col_obj = table_w - 130
+col_cumple = 92
+
+h = 24
+y = asegurar_espacio(y, h)
+draw_cell(c, x0, y - h, col_num, h, "No.", font="Helvetica-Bold", size=FONT_SMALL, center=True)
+draw_cell(c, x0 + col_num, y - h, col_obj, h, "Objetivo inicial", font="Helvetica-Bold", size=FONT_SMALL, center=True)
+draw_cell(c, x0 + col_num + col_obj, y - h, col_cumple, h, "Cumplió", font="Helvetica-Bold", size=FONT_SMALL, center=True)
+y -= h
+
+for idx, obj in enumerate(objetivos_iniciales, start=1):
+    h = alto_texto_local(obj, col_obj, base=28, font_size=FONT_SMALL, max_h=58)
+    y = asegurar_espacio(y, h)
+    draw_cell(c, x0, y - h, col_num, h, str(idx), font="Helvetica-Bold", size=FONT_SMALL, center=True)
+    draw_cell(c, x0 + col_num, y - h, col_obj, h, obj, size=FONT_SMALL)
+    draw_cell(c, x0 + col_num + col_obj, y - h, col_cumple, h, "[X]", font="Helvetica-Bold", size=FONT_SMALL, center=True)
+    y -= h
                 "codigo_proyecto": codigo_proyecto,
                 "nombre_proyecto": nombre_proyecto,
                 "fecha_acta": fecha_acta.strftime("%d/%m/%Y"),
@@ -5353,7 +5443,8 @@ elif st.session_state.fase_seleccionada == "cierre":
                 "trl_obtenido": trl_obtenido,
                 "aporte_tecnoparque": aporte_tecnoparque,
                 "evidencias_producto": evidencias_producto,
-                "objetivos": objetivos,
+                "objetivo_cierre": objetivo_cierre,
+                "objetivos_iniciales": objetivos_lista,
                 "evidencias_generadas": evidencias_generadas,
                 "modo_generacion": "Prueba local" if modo_prueba else "ChatGPT API",
             }
@@ -5379,9 +5470,12 @@ elif st.session_state.fase_seleccionada == "cierre":
             st.write("**TRL obtenido:**", datos["trl_obtenido"])
             st.write("**Aporte Tecnoparque:**", formato_moneda_colombiana(datos["aporte_tecnoparque"]))
 
-            st.markdown("### Objetivos generados")
-            for i, objetivo in enumerate(datos["objetivos"], start=1):
-                st.write(f"{i}. {objetivo}")
+            st.markdown("### Objetivo de cierre")
+            st.write(datos.get("objetivo_cierre", ""))
+
+            st.markdown("### Objetivos iniciales del proyecto")
+            for i, objetivo in enumerate(datos.get("objetivos_iniciales", []), start=1):
+                st.write(f"{i}. [X] Cumplió — {objetivo}")
 
             st.markdown("### Evidencias generadas")
             st.write("**Normatividad:**", evidencias.get("evidencias_normatividad", ""))
