@@ -3840,10 +3840,20 @@ def generar_pdf_acta_cierre(datos: dict) -> str:
     draw_cell(c, x0, y - h, table_w, h, objetivo_cierre, size=FONT_BODY)
     y -= h
 
-    # Objetivos iniciales y cumplimiento
+        # Objetivos iniciales y cumplimiento
     h = 22
     y = asegurar_espacio(y, h)
-    draw_cell(c, x0, y - h, table_w, h, "OBJETIVOS INICIALES DEL PROYECTO Y CUMPLIMIENTO", font="Helvetica-Bold", size=FONT_SECTION, center=True)
+    draw_cell(
+        c,
+        x0,
+        y - h,
+        table_w,
+        h,
+        "OBJETIVOS INICIALES DEL PROYECTO Y CUMPLIMIENTO",
+        font="Helvetica-Bold",
+        size=FONT_SECTION,
+        center=True,
+    )
     y -= h
 
     objetivos_iniciales = datos.get("objetivos_iniciales", [])
@@ -3864,40 +3874,55 @@ def generar_pdf_acta_cierre(datos: dict) -> str:
     for idx, obj in enumerate(objetivos_iniciales, start=1):
         h = alto_texto_local(obj, col_obj, base=28, font_size=FONT_SMALL, max_h=58)
         y = asegurar_espacio(y, h)
+
         draw_cell(c, x0, y - h, col_num, h, str(idx), font="Helvetica-Bold", size=FONT_SMALL, center=True)
         draw_cell(c, x0 + col_num, y - h, col_obj, h, obj, size=FONT_SMALL)
-        draw_cell(c, x0 + col_num + col_obj, y - h, col_cumple, h, "[X]", font="Helvetica-Bold", size=FONT_SMALL, center=True)
+        draw_cell(c, x0 + col_num + col_obj, y - h, col_cumple, h, "SI", font="Helvetica-Bold", size=FONT_SMALL, center=True)
+
         y -= h
 
-    for idx, obj in enumerate(objetivos_iniciales, start=1):
-        h = alto_texto_local(obj, col_obj, base=28, font_size=FONT_SMALL, max_h=58)
-        y = asegurar_espacio(y, h)
-        draw_cell(c, x0, y - h, col_num, h, str(idx), font="Helvetica-Bold", size=FONT_SMALL, center=True)
-        draw_cell(c, x0 + col_num, y - h, col_obj, h, obj, size=FONT_SMALL)
-        draw_cell(c, x0 + col_num + col_obj, y - h, col_cumple, h, "[X]", font="Helvetica-Bold", size=FONT_SMALL, center=True)
-        y -= h
+    # Evidencias
+    h = 22
+    y = asegurar_espacio(y, h)
+    draw_cell(
+        c,
+        x0,
+        y - h,
+        table_w,
+        h,
+        "EVIDENCIAS DEL PROYECTO",
+        font="Helvetica-Bold",
+        size=FONT_SECTION,
+        center=True,
+    )
+    y -= h
 
-        # Evidencias
-        h = 22
-        y = asegurar_espacio(y, h)
-        draw_cell(c, x0, y - h, table_w, h, "EVIDENCIAS DEL PROYECTO", font="Helvetica-Bold", size=FONT_SECTION, center=True)
-        y -= h
+    contenido = datos.get("evidencias_generadas", {})
 
-        contenido = datos.get("evidencias_generadas", {})
-
-        evidencias = [
-            ("Evidencias de Normatividad:", contenido.get("evidencias_normatividad", "")),
-            ("Evidencias de Modelo de Negocio:", contenido.get("evidencias_modelo_negocio", "")),
-            ("Evidencias de Pruebas Documentadas:", contenido.get("evidencias_pruebas_documentadas", "")),
-            ("Evidencias de Prototipo:", contenido.get("evidencias_prototipo", "")),
-        ]
+    evidencias = [
+        ("Evidencias de Normatividad:", contenido.get("evidencias_normatividad", "")),
+        ("Evidencias de Modelo de Negocio:", contenido.get("evidencias_modelo_negocio", "")),
+        ("Evidencias de Pruebas Documentadas:", contenido.get("evidencias_pruebas_documentadas", "")),
+        ("Evidencias de Prototipo:", contenido.get("evidencias_prototipo", "")),
+    ]
 
     for titulo, texto in evidencias:
-        h = alto_texto_local(texto, table_w, base=44, font_size=FONT_TINY, label=titulo, max_h=86)
+        if not str(texto).strip():
+            texto = "No se registró información específica para esta evidencia."
+
+        h = alto_texto_local(
+            texto,
+            table_w,
+            base=44,
+            font_size=FONT_TINY,
+            label=titulo,
+            max_h=95,
+        )
+
         y = asegurar_espacio(y, h)
         draw_cell(c, x0, y - h, table_w, h, texto, label=titulo, size=FONT_TINY)
         y -= h
-
+        
     # Conclusiones
     h = 22
     y = asegurar_espacio(y, h)
@@ -5483,7 +5508,7 @@ elif st.session_state.fase_seleccionada == "cierre":
 
             st.markdown("### Objetivos iniciales del proyecto")
             for i, objetivo in enumerate(datos.get("objetivos_iniciales", []), start=1):
-                st.write(f"{i}. [X] Cumplió — {objetivo}")
+                st.write(f"{i}. SI Cumplió — {objetivo}")
 
             st.markdown("### Evidencias generadas")
             st.write("**Normatividad:**", evidencias.get("evidencias_normatividad", ""))
