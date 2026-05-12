@@ -3479,54 +3479,69 @@ def generar_objetivo_cierre(codigo_proyecto: str, nombre_proyecto: str) -> str:
         "del cierre del proyecto."
     )
 
-
 def generar_evidencias_cierre_modo_prueba(nombre_proyecto: str, evidencias_producto: str) -> dict:
     texto_lower = evidencias_producto.lower()
 
-    if (
-        "susceptible de inscribir un nuevo proyecto" in texto_lower
-        or "inscribir un nuevo proyecto" in texto_lower
-    ):
-        if not datos["conclusion_adicional"]:
-            datos["conclusion_adicional"] = (
-                "Adicionalmente, se identifica que el proyecto es susceptible de inscribir un nuevo proyecto "
-                "o una nueva idea de base tecnológica, con el fin de continuar su fortalecimiento, validación, "
-                "escalamiento o desarrollo de nuevas funcionalidades."
-            )
+    if "susceptible de inscribir un nuevo proyecto" in texto_lower or "inscribir un nuevo proyecto" in texto_lower:
+        conclusion_adicional = (
+            "Adicionalmente, se identifica que el proyecto es susceptible de inscribir un nuevo proyecto "
+            "o una nueva idea de base tecnológica, con el fin de continuar su fortalecimiento, validación, "
+            "escalamiento o desarrollo de nuevas funcionalidades."
+        )
     else:
-        datos["conclusion_adicional"] = (
+        conclusion_adicional = (
             "Se evaluará la posibilidad de inscribir un nuevo prototipo, idea o proyecto de base tecnológica, "
             "de acuerdo con los resultados obtenidos, las oportunidades de mejora identificadas y el potencial "
             "de continuidad técnica del desarrollo alcanzado."
         )
 
+    entregables = [
+        item.strip(" -•0123456789.)")
+        for item in evidencias_producto.replace(";", "\n").split("\n")
+        if item.strip()
+    ]
+
+    if entregables:
+        entregables_texto = " ".join(
+            [
+                f"Se evidencia el desarrollo y entrega de {entregable}, como componente técnico asociado al prototipo, producto o resultado obtenido durante la ejecución del proyecto."
+                for entregable in entregables
+            ]
+        )
+    else:
+        entregables_texto = (
+            "Se registran evidencias asociadas al desarrollo del prototipo, incluyendo productos, componentes, "
+            "documentos técnicos, validaciones, diseños, pruebas o implementaciones generadas durante la ejecución del proyecto."
+        )
+
     return {
         "evidencias_normatividad": (
-            f"De acuerdo con la naturaleza técnica del proyecto {nombre_proyecto}, se recomienda considerar "
-            "como referentes de cumplimiento y validación las Normas Técnicas Colombianas NTC relacionadas con "
-            "gestión de calidad, documentación técnica, seguridad, requisitos de producto, trazabilidad, "
-            "medición, validación funcional y buenas prácticas de desarrollo tecnológico. Según el tipo de "
-            "prototipo, también pueden tomarse como referencia normas internacionales ISO aplicables a sistemas "
-            "de gestión de calidad, diseño de productos, procesos de ensayo, documentación de resultados, "
-            "seguridad de operación, protección de usuarios, interoperabilidad tecnológica o validación de "
-            "componentes. Estas referencias permiten orientar la verificación del prototipo, la organización "
-            "de evidencias, la estandarización de pruebas y la trazabilidad del proceso técnico desarrollado."
+            f"De acuerdo con la naturaleza técnica del proyecto {nombre_proyecto}, se identifican referentes normativos "
+            "aplicables para orientar la validación, documentación y cierre técnico del prototipo desarrollado. "
+            "Según el tipo de solución, pueden considerarse Normas Técnicas Colombianas NTC relacionadas con gestión "
+            "de calidad, documentación técnica, seguridad de producto, requisitos de operación, trazabilidad, "
+            "medición, validación funcional y buenas prácticas de desarrollo tecnológico. De manera complementaria, "
+            "pueden tomarse como referencia normas internacionales ISO aplicables a sistemas de gestión de calidad, "
+            "diseño de productos, procesos de ensayo, documentación de resultados, seguridad de operación, "
+            "interoperabilidad tecnológica, pruebas funcionales y validación de componentes. Estas referencias permiten "
+            "establecer criterios mínimos para verificar que el prototipo, producto o solución desarrollada cuente con "
+            "evidencias técnicas suficientes, trazabilidad documental y condiciones adecuadas para futuras fases de "
+            "fortalecimiento, transferencia, mejora o escalamiento."
         ),
         "evidencias_modelo_negocio": (
             "Se adjunta el Modelo Canvas aplicado al Proyecto de Base Tecnológica, como herramienta de análisis "
-            "para la identificación de propuesta de valor, segmentos de cliente, canales, recursos clave, "
+            "para la identificación de la propuesta de valor, segmentos de cliente, canales, recursos clave, "
             "actividades clave, aliados estratégicos, estructura de costos y fuentes de ingreso."
         ),
         "evidencias_pruebas_documentadas": (
             "Se adjunta el Informe Técnico Final, en el cual se documenta la metodología desarrollada, los procesos "
             "de validación, las pruebas realizadas, los resultados obtenidos y la implementación técnica del proyecto."
         ),
-        "evidencias_prototipo": (
-            "Como evidencias del prototipo y entregables desarrollados durante la ejecución del proyecto, se reportan: "
-            f"{evidencias_producto}"
-        ),
+        "evidencias_prototipo": entregables_texto,
         "conclusion_adicional": conclusion_adicional,
     }
+
+
 
 
 def generar_evidencias_cierre_con_chatgpt(
@@ -3594,11 +3609,34 @@ Genera un JSON con esta estructura exacta:
             if campo not in datos or not isinstance(datos[campo], str):
                 datos[campo] = ""
 
-        if "susceptible de inscribir un nuevo proyecto" in evidencias_producto.lower() and not datos["conclusion_adicional"]:
+        if not datos.get("evidencias_prototipo", "").strip():
+            datos_base = generar_evidencias_cierre_modo_prueba(nombre_proyecto, evidencias_producto)
+            datos["evidencias_prototipo"] = datos_base["evidencias_prototipo"]
+
+        if not datos.get("evidencias_normatividad", "").strip() or len(datos["evidencias_normatividad"]) < 250:
+            datos_base = generar_evidencias_cierre_modo_prueba(nombre_proyecto, evidencias_producto)
+            datos["evidencias_normatividad"] = datos_base["evidencias_normatividad"]
+                
+
+        texto_lower = evidencias_producto.lower()
+
+        if (
+            "susceptible de inscribir un nuevo proyecto" in texto_lower
+            or "inscribir un nuevo proyecto" in texto_lower
+        ):
+            if not datos["conclusion_adicional"]:
+                datos["conclusion_adicional"] = (
+                    "Adicionalmente, se identifica que el proyecto es susceptible de inscribir un nuevo proyecto "
+                    "o una nueva idea de base tecnológica, con el fin de continuar su fortalecimiento, validación, "
+                    "escalamiento o desarrollo de nuevas funcionalidades."
+                )
+        else:
             datos["conclusion_adicional"] = (
-                "Adicionalmente, se identifica que el proyecto es susceptible de inscribir un nuevo proyecto "
-                "para continuar su fortalecimiento, escalamiento o validación técnica."
+                "Se evaluará la posibilidad de inscribir un nuevo prototipo, idea o proyecto de base tecnológica, "
+                "de acuerdo con los resultados obtenidos, las oportunidades de mejora identificadas y el potencial "
+                "de continuidad técnica del desarrollo alcanzado."
             )
+            
 
         return datos
 
@@ -5337,6 +5375,7 @@ elif st.session_state.fase_seleccionada == "cierre":
                 placeholder="Copia aquí los objetivos iniciales del proyecto. Cada objetivo puede ir en una línea diferente.",
                 height=140
 )
+           
             evidencias_producto = st.text_area(
                 "Evidencias del Producto",
                 placeholder=(
