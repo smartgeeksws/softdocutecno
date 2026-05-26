@@ -6,6 +6,16 @@ import os
 import tempfile
 
 try:
+    from docx import Document
+    from docx.shared import Inches as DocxInches, Pt as DocxPt, Cm as DocxCm, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+except ImportError:
+    Document = None
+
+try:
     from openai import OpenAI
 except ImportError:
     OpenAI = None
@@ -146,6 +156,12 @@ if "datos_acta_cierre_generada" not in st.session_state:
 
 if "ruta_pdf_acta_cierre_generado" not in st.session_state:
     st.session_state.ruta_pdf_acta_cierre_generado = None
+
+if "datos_informe_tecnico_final_generado" not in st.session_state:
+    st.session_state.datos_informe_tecnico_final_generado = None
+
+if "ruta_docx_informe_tecnico_final_generado" not in st.session_state:
+    st.session_state.ruta_docx_informe_tecnico_final_generado = None
 
 
 # =====================================================
@@ -3975,6 +3991,536 @@ def generar_pdf_acta_cierre(datos: dict) -> str:
 
     return ruta_pdf
 
+
+# =====================================================
+# INFORME TÉCNICO FINAL - FASE DE CIERRE / DOCX
+# =====================================================
+
+TIPOS_PROYECTO_INFORME = [
+    "Software",
+    "Diseño industrial",
+    "Electrónica y automatización",
+    "Inteligencia artificial",
+    "Desarrollo de marca e identidad visual",
+    "Prototipo agroindustrial",
+    "Ficha técnica",
+    "Otro",
+]
+
+METODOLOGIAS_INFORME = [
+    "Design Thinking",
+    "Waterfall",
+    "Agile",
+    "DFMA",
+    "UCD",
+    "HCD",
+    "Engineering Design Process",
+    "Otra",
+]
+
+
+def conteo_palabras(texto: str) -> int:
+    return len(str(texto or "").split())
+
+
+def obtener_evidencias_sugeridas(tipo_proyecto: str) -> list[str]:
+    mapa = {
+        "Software": [
+            "Especificación o documento de requerimientos (SRS)",
+            "Diagramas de arquitectura, procesos o modelo de datos",
+            "Capturas del funcionamiento de la solución",
+            "Registro de pruebas funcionales y resultados",
+        ],
+        "Diseño industrial": [
+            "Modelos CAD o representaciones tridimensionales",
+            "Planos técnicos y detalles constructivos",
+            "Simulaciones o validaciones de diseño",
+            "Fotografías del prototipo desarrollado",
+        ],
+        "Electrónica y automatización": [
+            "Diagramas eléctricos, electrónicos o de control",
+            "Evidencias de montaje e integración del sistema",
+            "Código fuente, configuración o lógica de control",
+            "Resultados de pruebas de funcionamiento",
+        ],
+        "Inteligencia artificial": [
+            "Flujo metodológico y arquitectura de la solución",
+            "Resultados de entrenamiento, inferencia o procesamiento",
+            "Métricas o criterios de evaluación aplicados",
+            "Registro de validación con casos de prueba",
+        ],
+        "Desarrollo de marca e identidad visual": [
+            "Logotipo y variantes de aplicación",
+            "Manual de identidad visual o lineamientos de uso",
+            "Aplicaciones gráficas desarrolladas",
+            "Mockups o visualizaciones de implementación",
+        ],
+        "Prototipo agroindustrial": [
+            "Descripción del proceso o formulación desarrollada",
+            "Evidencia del prototipo o producto resultante",
+            "Registro fotográfico del desarrollo",
+            "Pruebas o validaciones técnicas realizadas",
+        ],
+        "Ficha técnica": [
+            "Documento de especificaciones técnicas",
+            "Imágenes o esquemas del producto",
+            "Criterios de uso, operación o aplicación",
+            "Registro de validación de la información técnica",
+        ],
+    }
+    return mapa.get(tipo_proyecto, [
+        "Descripción técnica del resultado entregado",
+        "Registro documental o fotográfico del desarrollo",
+        "Pruebas o validaciones reportadas por el usuario",
+        "Archivos finales o soportes de entrega",
+    ])
+
+
+def contexto_informe_para_ia(datos: dict) -> str:
+    aceptacion = (
+        "El usuario confirmó que el producto final fue presentado, validado y aceptado por el talento beneficiario."
+        if datos.get("aceptacion_confirmada")
+        else "El usuario NO confirmó aceptación final. No afirmes que el producto fue aceptado; indica que la aceptación debe formalizarse cuando corresponda."
+    )
+    return f"""
+Nombre del proyecto: {datos.get('nombre_proyecto', '')}
+Código del proyecto: {datos.get('codigo_proyecto', '')}
+Talento o beneficiario: {datos.get('nombre_talento', '')}
+Experto o asesor Tecnoparque: {datos.get('nombre_experto', '')}
+Línea tecnológica: {datos.get('linea_tecnologica', '')}
+Tipo de proyecto: {datos.get('tipo_proyecto_detallado', '')}
+Contexto, necesidad o problema: {datos.get('contexto_proyecto', '')}
+Metodología: {datos.get('metodologia_detallada', '')}
+Aplicación de la metodología: {datos.get('aplicacion_metodologia', '')}
+Tipo de innovación y valor diferencial: {datos.get('innovacion_valor', '')}
+Producto final entregado: {datos.get('producto_final', '')}
+Costo total estimado: {formato_moneda_colombiana(datos.get('costo_total', 0))}
+Pruebas y validación reportadas: {datos.get('pruebas_validacion', '')}
+Evidencias disponibles: {datos.get('evidencias_disponibles', '')}
+Entregables reportados: {datos.get('entregables', '')}
+Condición sobre aceptación: {aceptacion}
+""".strip()
+
+
+def generar_apartado_informe_modo_prueba(titulo: str, datos: dict, minimo_palabras: int) -> str:
+    base = {
+        "Introducción, Contexto y Antecedentes": (
+            f"El presente Informe Técnico Final documenta el proceso desarrollado para el proyecto {datos.get('nombre_proyecto', '')}, "
+            f"identificado con el código {datos.get('codigo_proyecto', '')}, en el marco del acompañamiento técnico de Tecnoparque Nodo Angostura. "
+            f"La iniciativa se relaciona con la necesidad descrita por el talento beneficiario: {datos.get('contexto_proyecto', '')}. "
+            "El informe organiza los antecedentes, el enfoque metodológico aplicado, la estimación técnica de recursos, las validaciones reportadas "
+            "y los productos entregados, con el propósito de dejar trazabilidad del desarrollo sin convertir el documento en una certificación contable, "
+            "normativa o de aceptación no acreditada. "
+        ),
+        "Metodología": (
+            f"El proyecto se abordó mediante la metodología {datos.get('metodologia_detallada', '')}. "
+            f"De acuerdo con la información suministrada, su aplicación se desarrolló así: {datos.get('aplicacion_metodologia', '')}. "
+            "La metodología se interpreta como una ruta de trabajo para reconocer la necesidad, definir criterios técnicos, construir alternativas, "
+            "producir resultados verificables y revisar oportunidades de ajuste. Cada fase debe estar respaldada por archivos, decisiones, evidencias "
+            "o validaciones efectivamente disponibles en el expediente del proyecto. "
+        ),
+        "Normatividad": (
+            f"Para el tipo de proyecto {datos.get('tipo_proyecto_detallado', '')}, la revisión normativa debe orientarse a referentes técnicos y buenas prácticas "
+            "realmente aplicables al producto desarrollado. Este documento no acredita certificaciones, conformidades ni cumplimiento de normas específicas. "
+            "La identificación final de requisitos dependerá del uso previsto, condiciones de seguridad, datos tratados, materiales utilizados, entorno de operación "
+            "y evidencias de prueba disponibles. Se recomienda conservar trazabilidad de versiones, decisiones técnicas, resultados de validación y soportes de entrega. "
+        ),
+        "Análisis y Estimación de Costos del Proyecto": (
+            f"El costo total suministrado para el desarrollo corresponde a {formato_moneda_colombiana(datos.get('costo_total', 0))}. "
+            "La tabla incluida en este informe distribuye dicho total de forma estimativa entre componentes coherentes con el tipo de proyecto y el producto final. "
+            "Su propósito es facilitar una lectura técnica del esfuerzo y de los recursos asociados, sin representar facturación, avalúo, certificación financiera "
+            "o verificación contable. Los valores pueden corresponder a actividades de diseño, desarrollo, integración, documentación, pruebas o recursos técnicos. "
+        ),
+        "Pruebas Documentadas y Validación del Prototipo": (
+            f"Las pruebas y validaciones informadas para el proyecto son las siguientes: {datos.get('pruebas_validacion', '')}. "
+            f"Como soportes disponibles se reportan: {datos.get('evidencias_disponibles', '')}. "
+            "La validación técnica debe entenderse en función de los registros efectivamente anexados, de las condiciones bajo las cuales se realizaron las pruebas "
+            "y de los criterios definidos para comprobar funcionamiento, calidad, presentación o desempeño del producto final. "
+        ),
+        "Entregables": (
+            f"Los entregables declarados por el usuario son: {datos.get('entregables', '')}. "
+            "Estos productos representan los resultados que deben quedar identificados, organizados y vinculados con su respectiva evidencia documental, digital, "
+            "gráfica o física. La tabla de entregables se construye a partir de lo reportado y permite revisar el estado de cada resultado sin inventar archivos no aportados. "
+        ),
+        "Análisis y Conclusiones": (
+            f"El proyecto {datos.get('nombre_proyecto', '')} consolida un resultado técnico asociado a {datos.get('producto_final', '')}. "
+            f"Su valor diferencial se relaciona con: {datos.get('innovacion_valor', '')}. "
+            "La revisión final integra contexto, metodología, costos estimativos, pruebas reportadas y entregables identificados. "
+        ),
+    }.get(titulo, "El apartado se construye con base en la información suministrada para el proyecto. ")
+    if titulo == "Análisis y Conclusiones":
+        if datos.get("aceptacion_confirmada"):
+            base += "De acuerdo con la confirmación diligenciada, se deja constancia de que el producto final fue presentado, validado y aceptado por el talento beneficiario. "
+        else:
+            base += "No se deja constancia de aceptación final, debido a que dicha confirmación no fue marcada en el formulario; esta deberá formalizarse mediante el soporte correspondiente. "
+    ampliaciones = [
+        "La documentación técnica cumple un papel central porque permite relacionar la necesidad inicial con los resultados alcanzados, los criterios de revisión y los soportes disponibles. En ese sentido, cada afirmación debe corresponder a evidencias identificables y conservar una redacción prudente sobre los alcances reales del desarrollo.",
+        "El acompañamiento de Tecnoparque se comprende como un proceso de orientación técnica y metodológica que fortalece la estructuración del proyecto. Las decisiones de diseño, desarrollo o validación deben quedar asociadas a las condiciones reportadas por el talento y a los recursos efectivamente utilizados durante la ejecución.",
+        "La revisión del producto final debe considerar su propósito, las funcionalidades o características desarrolladas y la forma en que responde a la necesidad planteada. Cuando exista información pendiente de verificación, esta debe presentarse como una oportunidad de complemento documental y no como un resultado ya certificado.",
+        "Para efectos de trazabilidad, es recomendable conservar archivos fuente, versiones finales, registros fotográficos, resultados de prueba, documentos de diseño, actas y demás soportes que permitan reconstruir el proceso de desarrollo. Esta organización facilita evaluaciones posteriores y procesos de mejora o continuidad.",
+        "La estimación de recursos y actividades técnicas permite dimensionar el esfuerzo asociado al proyecto sin sustituir procesos contables o contractuales. Su lectura debe enfocarse en los componentes del desarrollo, la integración del resultado y los recursos vinculados a documentación, revisión, pruebas o presentación final.",
+        "La validación debe estar respaldada por criterios explícitos, observaciones registradas y soportes disponibles. En proyectos tecnológicos, esta práctica ayuda a identificar ajustes, documentar resultados funcionales y sustentar decisiones sobre evolución, mantenimiento, escalamiento o nuevas etapas de desarrollo.",
+        "El valor diferencial del proyecto debe analizarse a partir del problema atendido, la pertinencia de la solución y las características que aportan una mejora frente al contexto inicial. Este análisis evita afirmaciones generales y orienta la comunicación del resultado hacia elementos técnicos verificables.",
+        "La presentación final de entregables constituye un cierre documental del proceso y permite establecer cuáles productos fueron reportados, qué soportes los acompañan y qué elementos requieren conservación o actualización. Esta información es relevante para la memoria técnica del proyecto y su eventual continuidad.",
+        "Las buenas prácticas aplicables pueden relacionarse con gestión documental, control de versiones, seguridad, calidad, pruebas, usabilidad, diseño o trazabilidad, según corresponda al tipo de desarrollo. La adopción de referentes concretos debe verificarse posteriormente frente al producto, sector y uso previsto.",
+        "Finalmente, el informe debe facilitar la comprensión del proyecto por parte de sus interesados, integrando información técnica clara, verificable y ordenada. Su contenido constituye una síntesis del desarrollo reportado y una base para determinar acciones futuras, sin reemplazar certificaciones o evaluaciones externas que no hayan sido aportadas.",
+    ]
+    texto = base
+    indice = 0
+    while conteo_palabras(texto) < minimo_palabras:
+        texto += " " + ampliaciones[indice % len(ampliaciones)]
+        indice += 1
+    return texto.strip()
+
+
+def generar_apartado_informe_con_chatgpt(
+    titulo: str,
+    datos: dict,
+    minimo_palabras: int,
+    modelo: str = "gpt-4.1-mini",
+) -> str:
+    if OpenAI is None:
+        raise ImportError("No está instalada la librería openai. Instálala con: pip install openai")
+    api_key = obtener_api_key()
+    if not api_key:
+        raise ValueError("No se encontró OPENAI_API_KEY.")
+    client = OpenAI(api_key=api_key)
+    instrucciones = f"""
+Eres un redactor técnico institucional para proyectos de SENA Tecnoparque Nodo Angostura.
+Redacta únicamente el apartado titulado: {titulo}.
+El texto debe ser profesional, técnico, coherente y tener mínimo {minimo_palabras} palabras.
+No uses markdown, listas con viñetas ni encabezados adicionales.
+No inventes datos, pruebas, certificaciones, normas específicas, aceptación, cifras ni documentos no suministrados.
+En normatividad, menciona referentes y buenas prácticas pertinentes de manera prudente, aclarando que la aplicabilidad debe verificarse según el producto y uso previsto.
+En costos, aclara que se trata de una estimación técnica y no de información contable certificada.
+En conclusiones, solo afirma aceptación final cuando la condición suministrada indique que fue confirmada.
+"""
+    prompt = contexto_informe_para_ia(datos)
+    respuesta = client.responses.create(
+        model=modelo,
+        instructions=instrucciones,
+        input=prompt,
+        temperature=0.28,
+    )
+    texto = str(getattr(respuesta, "output_text", "") or "").strip()
+    if conteo_palabras(texto) < minimo_palabras:
+        ampliacion = client.responses.create(
+            model=modelo,
+            instructions=instrucciones,
+            input=(
+                prompt
+                + "\n\nBorrador inicial que debes ampliar y mejorar manteniendo los hechos suministrados:\n"
+                + texto
+                + f"\n\nDevuelve una versión integral de al menos {minimo_palabras} palabras."
+            ),
+            temperature=0.25,
+        )
+        texto_ampliado = str(getattr(ampliacion, "output_text", "") or "").strip()
+        if conteo_palabras(texto_ampliado) > conteo_palabras(texto):
+            texto = texto_ampliado
+    return texto or generar_apartado_informe_modo_prueba(titulo, datos, minimo_palabras)
+
+
+def categorias_costos_por_tipo(tipo_proyecto: str) -> list[tuple[str, str, float]]:
+    catalogo = {
+        "Software": [
+            ("Análisis y arquitectura", "Levantamiento técnico, estructura de solución y diseño funcional", 0.18),
+            ("Desarrollo e implementación", "Construcción de módulos, lógica y componentes de software", 0.42),
+            ("Interfaz y experiencia de usuario", "Diseño de pantallas, navegación y ajustes de usabilidad", 0.14),
+            ("Pruebas y validación", "Verificación funcional y ajustes derivados", 0.14),
+            ("Documentación técnica", "Manuales, soportes y consolidación de entregables", 0.12),
+        ],
+        "Diseño industrial": [
+            ("Conceptualización", "Investigación, criterios de diseño y alternativas", 0.16),
+            ("Modelado CAD", "Diseño tridimensional y ajustes geométricos", 0.27),
+            ("Planos y especificaciones", "Despieces, medidas y documentación técnica", 0.17),
+            ("Prototipado", "Materialización o validación de la propuesta", 0.28),
+            ("Pruebas y ajustes", "Verificaciones y mejoras del diseño", 0.12),
+        ],
+        "Electrónica y automatización": [
+            ("Diseño electrónico", "Diagramas, selección de componentes y arquitectura", 0.18),
+            ("Componentes e integración", "Elementos, montaje e interconexión", 0.34),
+            ("Programación y control", "Firmware, lógica o configuración de automatización", 0.20),
+            ("Pruebas funcionales", "Medición, puesta a punto y validación", 0.17),
+            ("Documentación", "Soportes técnicos y evidencias", 0.11),
+        ],
+        "Inteligencia artificial": [
+            ("Preparación de información", "Estructuración de insumos y datos disponibles", 0.17),
+            ("Diseño de solución IA", "Arquitectura, flujo y criterios de análisis", 0.21),
+            ("Desarrollo e integración", "Implementación del componente inteligente", 0.30),
+            ("Evaluación y validación", "Métricas, pruebas y revisión de resultados", 0.20),
+            ("Documentación técnica", "Registro metodológico y soportes finales", 0.12),
+        ],
+        "Desarrollo de marca e identidad visual": [
+            ("Investigación y concepto", "Análisis inicial y direccionamiento creativo", 0.18),
+            ("Diseño de identidad", "Logotipo, sistema visual y variantes", 0.30),
+            ("Manual de marca", "Lineamientos técnicos de uso", 0.22),
+            ("Aplicaciones y mockups", "Visualización de piezas y soportes", 0.20),
+            ("Validación y entrega", "Ajustes y consolidación de archivos", 0.10),
+        ],
+        "Prototipo agroindustrial": [
+            ("Formulación y diseño de proceso", "Definición técnica de la solución", 0.18),
+            ("Materias primas o insumos", "Elementos estimados para prototipo", 0.27),
+            ("Desarrollo del prototipo", "Preparación, fabricación o integración", 0.27),
+            ("Pruebas y validación", "Evaluación técnica del resultado", 0.17),
+            ("Documentación y entrega", "Ficha, registro y evidencias", 0.11),
+        ],
+        "Ficha técnica": [
+            ("Levantamiento de información", "Obtención y depuración de datos técnicos", 0.22),
+            ("Estructuración documental", "Organización de especificaciones y contenido", 0.30),
+            ("Recursos gráficos", "Imágenes, esquemas o diagramación", 0.18),
+            ("Revisión y validación", "Verificación de información y ajustes", 0.18),
+            ("Entrega final", "Consolidación del documento final", 0.12),
+        ],
+    }
+    return catalogo.get(tipo_proyecto, catalogo["Software"])
+
+
+def ajustar_tabla_costos(tabla: list[dict], total: int) -> list[dict]:
+    total = max(0, int(round(total)))
+    filas = []
+    for idx, item in enumerate(tabla, start=1):
+        categoria = str(item.get("categoria", item.get("componente", "Componente técnico"))).strip() or "Componente técnico"
+        descripcion = str(item.get("descripcion", item.get("descripcion_costo", "Estimación técnica asociada al desarrollo"))).strip()
+        try:
+            valor = max(0, int(round(float(item.get("valor", item.get("valor_estimado", 0))))))
+        except Exception:
+            valor = 0
+        filas.append({"item": idx, "categoria": categoria, "descripcion": descripcion, "valor_estimado": valor})
+    if not filas:
+        filas = [{"item": 1, "categoria": "Desarrollo técnico", "descripcion": "Estimación global del proyecto", "valor_estimado": total}]
+    suma = sum(f["valor_estimado"] for f in filas)
+    if suma == 0:
+        base = total // len(filas) if filas else total
+        for fila in filas:
+            fila["valor_estimado"] = base
+        suma = sum(f["valor_estimado"] for f in filas)
+    diferencia = total - suma
+    filas[-1]["valor_estimado"] = max(0, filas[-1]["valor_estimado"] + diferencia)
+    nueva_suma = sum(f["valor_estimado"] for f in filas)
+    if nueva_suma != total:
+        filas[-1]["valor_estimado"] += total - nueva_suma
+    return filas
+
+
+def generar_tabla_costos_modo_prueba(datos: dict) -> list[dict]:
+    total = int(datos.get("costo_total", 0))
+    filas = []
+    for idx, (categoria, descripcion, proporcion) in enumerate(categorias_costos_por_tipo(datos.get("tipo_proyecto", "")), start=1):
+        filas.append({
+            "item": idx,
+            "categoria": categoria,
+            "descripcion": descripcion,
+            "valor_estimado": int(round(total * proporcion)),
+        })
+    return ajustar_tabla_costos(filas, total)
+
+
+def generar_tabla_costos_con_chatgpt(datos: dict, modelo: str = "gpt-4.1-mini") -> list[dict]:
+    if OpenAI is None:
+        raise ImportError("No está instalada la librería openai. Instálala con: pip install openai")
+    api_key = obtener_api_key()
+    if not api_key:
+        raise ValueError("No se encontró OPENAI_API_KEY.")
+    client = OpenAI(api_key=api_key)
+    instrucciones = """
+Genera una tabla estimativa de costos para un informe técnico final de Tecnoparque.
+Responde únicamente JSON válido con la clave "costos" y entre 4 y 7 filas.
+Cada fila debe contener: categoria, descripcion, valor_estimado como número entero en pesos colombianos.
+La distribución debe ser coherente con el tipo de proyecto y el producto final entregado.
+No presentes los valores como costos certificados, facturas o contabilidad verificada.
+"""
+    entrada = contexto_informe_para_ia(datos) + "\nEl total que debe distribuirse es: " + str(int(datos.get("costo_total", 0)))
+    respuesta = client.responses.create(model=modelo, instructions=instrucciones, input=entrada, temperature=0.2)
+    contenido = json.loads(limpiar_respuesta_json(respuesta.output_text))
+    return ajustar_tabla_costos(contenido.get("costos", []), int(datos.get("costo_total", 0)))
+
+
+def dividir_entregables_texto(texto: str) -> list[str]:
+    texto = str(texto or "").replace(";", "\n")
+    elementos = [linea.strip(" -•\t") for linea in texto.splitlines() if linea.strip(" -•\t")]
+    if len(elementos) <= 1 and "," in texto:
+        elementos = [item.strip() for item in texto.split(",") if item.strip()]
+    return elementos or ["Entregable descrito en el informe técnico final"]
+
+
+def generar_tabla_entregables(datos: dict) -> list[dict]:
+    evidencias = dividir_entregables_texto(datos.get("evidencias_disponibles", ""))
+    entregables = dividir_entregables_texto(datos.get("entregables", ""))
+    filas = []
+    for idx, entregable in enumerate(entregables, start=1):
+        evidencia = evidencias[idx - 1] if idx - 1 < len(evidencias) else "Soporte por verificar o anexar"
+        filas.append({
+            "item": idx,
+            "entregable": entregable,
+            "evidencia": evidencia,
+            "estado": "Reportado por el usuario",
+        })
+    return filas
+
+
+def sombrear_celda_docx(celda, color: str) -> None:
+    propiedades = celda._tc.get_or_add_tcPr()
+    sombreado = OxmlElement("w:shd")
+    sombreado.set(qn("w:fill"), color)
+    propiedades.append(sombreado)
+
+
+def configurar_celda_docx(celda, texto: str, negrita: bool = False, tamano: int = 9) -> None:
+    celda.text = ""
+    parrafo = celda.paragraphs[0]
+    run = parrafo.add_run(str(texto))
+    run.bold = negrita
+    run.font.size = DocxPt(tamano)
+    celda.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+
+
+def agregar_titulo_docx(documento, titulo: str) -> None:
+    parrafo = documento.add_paragraph()
+    parrafo.paragraph_format.space_before = DocxPt(10)
+    parrafo.paragraph_format.space_after = DocxPt(6)
+    run = parrafo.add_run(titulo)
+    run.bold = True
+    run.font.size = DocxPt(13)
+    run.font.color.rgb = RGBColor(57, 169, 53)
+
+
+def agregar_texto_docx(documento, texto: str) -> None:
+    for bloque in [p.strip() for p in str(texto or "").split("\n") if p.strip()]:
+        parrafo = documento.add_paragraph(bloque)
+        parrafo.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        parrafo.paragraph_format.space_after = DocxPt(6)
+        parrafo.paragraph_format.line_spacing = 1.15
+        for run in parrafo.runs:
+            run.font.size = DocxPt(10)
+
+
+def generar_docx_informe_tecnico_final(datos: dict) -> str:
+    if Document is None:
+        raise ImportError("No está instalada python-docx. Agrégala a requirements.txt e instala con: pip install python-docx")
+    Path(CARPETA_SALIDA).mkdir(parents=True, exist_ok=True)
+    archivo = f"Informe_Tecnico_Final_{safe_filename(datos.get('codigo_proyecto', 'proyecto'))}.docx"
+    ruta_docx = str(Path(CARPETA_SALIDA) / archivo)
+    documento = Document()
+    seccion = documento.sections[0]
+    seccion.top_margin = DocxCm(2.3)
+    seccion.bottom_margin = DocxCm(2.0)
+    seccion.left_margin = DocxCm(2.2)
+    seccion.right_margin = DocxCm(2.2)
+
+    estilo_normal = documento.styles["Normal"]
+    estilo_normal.font.name = "Arial"
+    estilo_normal.font.size = DocxPt(10)
+
+    encabezado = seccion.header
+    tabla_header = encabezado.add_table(rows=2, cols=3, width=DocxCm(17))
+    tabla_header.alignment = WD_TABLE_ALIGNMENT.CENTER
+    tabla_header.columns[0].width = DocxCm(4.0)
+    tabla_header.columns[1].width = DocxCm(9.0)
+    tabla_header.columns[2].width = DocxCm(4.0)
+    ruta_tecno = obtener_ruta_logo_tecnoparque()
+    ruta_sena = obtener_ruta_logo_sena()
+    if ruta_tecno and Path(ruta_tecno).exists():
+        tabla_header.cell(0, 0).paragraphs[0].add_run().add_picture(ruta_tecno, width=DocxCm(3.7))
+    else:
+        configurar_celda_docx(tabla_header.cell(0, 0), "TECNOPARQUE", True, 9)
+    titulo_p = tabla_header.cell(0, 1).paragraphs[0]
+    titulo_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    titulo_r = titulo_p.add_run("INFORME TÉCNICO FINAL")
+    titulo_r.bold = True
+    titulo_r.font.size = DocxPt(16)
+    titulo_r.font.color.rgb = RGBColor(57, 169, 53)
+    if ruta_sena and Path(ruta_sena).exists():
+        p_logo = tabla_header.cell(0, 2).paragraphs[0]
+        p_logo.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        p_logo.add_run().add_picture(ruta_sena, width=DocxCm(2.0))
+    else:
+        configurar_celda_docx(tabla_header.cell(0, 2), "SENA", True, 12)
+    subtitulo = tabla_header.cell(1, 0).merge(tabla_header.cell(1, 2)).paragraphs[0]
+    subtitulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_sub = subtitulo.add_run(f"{datos.get('codigo_proyecto', '')} - {datos.get('nombre_proyecto', '')}")
+    run_sub.bold = True
+    run_sub.font.size = DocxPt(10)
+
+    p_inicial = documento.add_paragraph()
+    p_inicial.add_run(f"Talento o beneficiario: ").bold = True
+    p_inicial.add_run(datos.get("nombre_talento", ""))
+    p_inicial.add_run("   |   Experto Tecnoparque: ").bold = True
+    p_inicial.add_run(datos.get("nombre_experto", ""))
+    p_linea = documento.add_paragraph()
+    p_linea.add_run("Línea tecnológica: ").bold = True
+    p_linea.add_run(datos.get("linea_tecnologica", ""))
+    p_linea.add_run("   |   Tipo de proyecto: ").bold = True
+    p_linea.add_run(datos.get("tipo_proyecto_detallado", ""))
+
+    secciones = [
+        "Introducción, Contexto y Antecedentes",
+        "Metodología",
+        "Normatividad",
+        "Análisis y Estimación de Costos del Proyecto",
+        "Pruebas Documentadas y Validación del Prototipo",
+        "Entregables",
+        "Análisis y Conclusiones",
+    ]
+    contenidos = datos.get("contenido_generado", {})
+    for titulo in secciones:
+        agregar_titulo_docx(documento, titulo)
+        agregar_texto_docx(documento, contenidos.get(titulo, ""))
+        if titulo == "Análisis y Estimación de Costos del Proyecto":
+            p_nota = documento.add_paragraph()
+            r_nota = p_nota.add_run("Nota: La siguiente distribución corresponde a una estimación técnica y no constituye información contable certificada.")
+            r_nota.italic = True
+            r_nota.font.size = DocxPt(9)
+            tabla = documento.add_table(rows=1, cols=4)
+            tabla.style = "Table Grid"
+            tabla.alignment = WD_TABLE_ALIGNMENT.CENTER
+            encabezados = ["Ítem", "Categoría o componente", "Descripción del costo estimado", "Valor estimado"]
+            for col, encabezado_texto in enumerate(encabezados):
+                configurar_celda_docx(tabla.cell(0, col), encabezado_texto, True, 9)
+                sombrear_celda_docx(tabla.cell(0, col), "D9EAD3")
+            for fila in datos.get("tabla_costos", []):
+                celdas = tabla.add_row().cells
+                configurar_celda_docx(celdas[0], fila.get("item", ""), False, 9)
+                configurar_celda_docx(celdas[1], fila.get("categoria", ""), False, 9)
+                configurar_celda_docx(celdas[2], fila.get("descripcion", ""), False, 9)
+                configurar_celda_docx(celdas[3], formato_moneda_colombiana(fila.get("valor_estimado", 0)), False, 9)
+            total_cells = tabla.add_row().cells
+            total_cells[0].merge(total_cells[2])
+            configurar_celda_docx(total_cells[0], "TOTAL ESTIMADO DEL PROTOTIPO O DESARROLLO", True, 9)
+            configurar_celda_docx(total_cells[3], formato_moneda_colombiana(datos.get("costo_total", 0)), True, 9)
+            sombrear_celda_docx(total_cells[0], "D9EAD3")
+            sombrear_celda_docx(total_cells[3], "D9EAD3")
+        if titulo == "Pruebas Documentadas y Validación del Prototipo":
+            documento.add_paragraph("Espacios sugeridos para anexar evidencias:")
+            tabla_ev = documento.add_table(rows=1, cols=3)
+            tabla_ev.style = "Table Grid"
+            for col, head in enumerate(["Evidencia sugerida", "Referencia / archivo anexo", "Observación"]):
+                configurar_celda_docx(tabla_ev.cell(0, col), head, True, 9)
+                sombrear_celda_docx(tabla_ev.cell(0, col), "D9EAD3")
+            for evidencia in obtener_evidencias_sugeridas(datos.get("tipo_proyecto", "")):
+                row = tabla_ev.add_row().cells
+                configurar_celda_docx(row[0], evidencia, False, 9)
+                configurar_celda_docx(row[1], "", False, 9)
+                configurar_celda_docx(row[2], "", False, 9)
+        if titulo == "Entregables":
+            tabla_en = documento.add_table(rows=1, cols=4)
+            tabla_en.style = "Table Grid"
+            for col, head in enumerate(["Ítem", "Entregable", "Evidencia asociada", "Estado"]):
+                configurar_celda_docx(tabla_en.cell(0, col), head, True, 9)
+                sombrear_celda_docx(tabla_en.cell(0, col), "D9EAD3")
+            for fila in datos.get("tabla_entregables", []):
+                row = tabla_en.add_row().cells
+                configurar_celda_docx(row[0], fila.get("item", ""), False, 9)
+                configurar_celda_docx(row[1], fila.get("entregable", ""), False, 9)
+                configurar_celda_docx(row[2], fila.get("evidencia", ""), False, 9)
+                configurar_celda_docx(row[3], fila.get("estado", ""), False, 9)
+
+    documento.save(ruta_docx)
+    datos_json = dict(datos)
+    datos_json["ruta_docx"] = ruta_docx
+    guardar_datos_json(datos_json, ruta="datos_informe_tecnico_final.json")
+    return ruta_docx
+
 # =====================================================
 # SIDEBAR DE CONFIGURACIÓN
 # =====================================================
@@ -5336,7 +5882,230 @@ elif st.session_state.fase_seleccionada == "cierre":
         st.stop()
 
     if st.session_state.documento_seleccionado == "informe_tecnico_final":
-        st.warning("El módulo de Informe técnico final estará disponible en una siguiente versión.")
+        st.markdown("---")
+        st.subheader("Informe Técnico Final")
+        st.info(
+            "Este módulo genera un documento Word institucional con apartados técnicos, tabla estimativa de costos, "
+            "evidencias sugeridas y entregables del proyecto."
+        )
+
+        tipo_proyecto = st.selectbox(
+            "Tipo de proyecto",
+            options=TIPOS_PROYECTO_INFORME,
+            key="itf_tipo_proyecto",
+        )
+        tipo_otro = ""
+        if tipo_proyecto == "Otro":
+            tipo_otro = st.text_input(
+                "Describe el tipo de proyecto",
+                placeholder="Ejemplo: Solución de realidad aumentada aplicada al turismo",
+                key="itf_tipo_otro",
+            )
+
+        metodologia = st.selectbox(
+            "Metodología",
+            options=METODOLOGIAS_INFORME,
+            key="itf_metodologia",
+        )
+        metodologia_otra = ""
+        if metodologia == "Otra":
+            metodologia_otra = st.text_input(
+                "Describe la metodología aplicada",
+                placeholder="Nombre o enfoque metodológico utilizado",
+                key="itf_metodologia_otra",
+            )
+
+        with st.form("form_informe_tecnico_final"):
+            col_a, col_b = st.columns(2)
+
+            with col_a:
+                nombre_proyecto_itf = st.text_area(
+                    "Nombre completo del proyecto",
+                    placeholder="Nombre oficial del proyecto",
+                    height=82,
+                )
+                codigo_proyecto_itf = st.text_input(
+                    "Código del proyecto",
+                    placeholder="Ejemplo: P2026-143440-00001",
+                )
+                nombre_talento_itf = st.text_input(
+                    "Nombre del talento o beneficiario",
+                    placeholder="Nombre completo",
+                )
+                nombre_experto_itf = st.text_input(
+                    "Nombre del experto o asesor Tecnoparque",
+                    placeholder="Nombre completo",
+                )
+                linea_tecnologica_itf = st.text_input(
+                    "Línea tecnológica del proyecto",
+                    placeholder="Ejemplo: Ingeniería y diseño",
+                )
+
+            with col_b:
+                costo_total_itf = st.number_input(
+                    "Costo total estimado del prototipo o desarrollo (COP)",
+                    min_value=0,
+                    value=0,
+                    step=10000,
+                    help="Solo ingresa el valor total. El sistema generará la distribución estimativa.",
+                )
+                contexto_itf = st.text_area(
+                    "Contexto, necesidad o problema del proyecto",
+                    placeholder="Describe el origen, necesidad atendida y contexto del desarrollo.",
+                    height=145,
+                )
+                innovacion_itf = st.text_area(
+                    "Tipo de innovación y valor diferencial",
+                    placeholder="Explica el aporte innovador y qué diferencia al resultado obtenido.",
+                    height=120,
+                )
+
+            aplicacion_metodologia_itf = st.text_area(
+                "Descripción de cómo se aplicó la metodología",
+                placeholder="Describe las etapas, decisiones y actividades efectivamente realizadas.",
+                height=150,
+            )
+            producto_final_itf = st.text_area(
+                "Descripción del producto final entregado",
+                placeholder="Describe el prototipo, producto, desarrollo o documento final entregado.",
+                height=145,
+            )
+            pruebas_itf = st.text_area(
+                "Pruebas y validación realizadas",
+                placeholder="Describe únicamente pruebas o validaciones realmente realizadas.",
+                height=145,
+            )
+            evidencias_itf = st.text_area(
+                "Evidencias disponibles para el informe",
+                placeholder="Lista soportes disponibles: capturas, planos, enlaces, fotografías, actas, archivos, resultados, etc.",
+                height=145,
+            )
+            entregables_itf = st.text_area(
+                "Entregables del proyecto",
+                placeholder="Escribe un entregable por línea: producto, documento, archivo, prototipo o resultado entregado.",
+                height=145,
+            )
+            aceptacion_itf = st.checkbox(
+                "Confirmo que el prototipo, producto o desarrollo final fue presentado, validado y aceptado por el talento beneficiario."
+            )
+            generar_informe_itf = st.form_submit_button("Generar Informe Técnico Final en Word")
+
+        if generar_informe_itf:
+            tipo_detallado = tipo_otro.strip() if tipo_proyecto == "Otro" else tipo_proyecto
+            metodologia_detallada = metodologia_otra.strip() if metodologia == "Otra" else metodologia
+            errores = []
+            campos_obligatorios = {
+                "Nombre completo del proyecto": nombre_proyecto_itf,
+                "Código del proyecto": codigo_proyecto_itf,
+                "Nombre del talento o beneficiario": nombre_talento_itf,
+                "Nombre del experto o asesor Tecnoparque": nombre_experto_itf,
+                "Línea tecnológica": linea_tecnologica_itf,
+                "Tipo de proyecto": tipo_detallado,
+                "Contexto, necesidad o problema": contexto_itf,
+                "Metodología": metodologia_detallada,
+                "Aplicación de la metodología": aplicacion_metodologia_itf,
+                "Tipo de innovación y valor diferencial": innovacion_itf,
+                "Producto final entregado": producto_final_itf,
+                "Pruebas y validación": pruebas_itf,
+                "Evidencias disponibles": evidencias_itf,
+                "Entregables del proyecto": entregables_itf,
+            }
+            for campo, valor in campos_obligatorios.items():
+                if not str(valor).strip():
+                    errores.append(campo)
+            if int(costo_total_itf) <= 0:
+                errores.append("Costo total estimado del prototipo o desarrollo")
+            if errores:
+                st.error("Faltan datos obligatorios o inválidos: " + ", ".join(errores))
+                st.stop()
+
+            datos_itf = {
+                "tipo_documento": "Informe Técnico Final",
+                "nombre_proyecto": nombre_proyecto_itf.strip(),
+                "codigo_proyecto": codigo_proyecto_itf.strip(),
+                "nombre_talento": nombre_talento_itf.strip(),
+                "nombre_experto": nombre_experto_itf.strip(),
+                "linea_tecnologica": linea_tecnologica_itf.strip(),
+                "tipo_proyecto": tipo_proyecto,
+                "tipo_proyecto_detallado": tipo_detallado,
+                "contexto_proyecto": contexto_itf.strip(),
+                "metodologia": metodologia,
+                "metodologia_detallada": metodologia_detallada,
+                "aplicacion_metodologia": aplicacion_metodologia_itf.strip(),
+                "innovacion_valor": innovacion_itf.strip(),
+                "producto_final": producto_final_itf.strip(),
+                "costo_total": int(costo_total_itf),
+                "pruebas_validacion": pruebas_itf.strip(),
+                "evidencias_disponibles": evidencias_itf.strip(),
+                "entregables": entregables_itf.strip(),
+                "aceptacion_confirmada": bool(aceptacion_itf),
+                "modo_generacion": "Prueba local" if modo_prueba else "ChatGPT API",
+            }
+            apartados = [
+                ("Introducción, Contexto y Antecedentes", 400),
+                ("Metodología", 600),
+                ("Normatividad", 400),
+                ("Análisis y Estimación de Costos del Proyecto", 400),
+                ("Pruebas Documentadas y Validación del Prototipo", 400),
+                ("Entregables", 400),
+                ("Análisis y Conclusiones", 400),
+            ]
+            progreso = st.progress(0, text="Preparando generación del informe...")
+            contenido_generado = {}
+            try:
+                for indice, (titulo_apartado, minimo) in enumerate(apartados, start=1):
+                    progreso.progress(
+                        int((indice - 1) / (len(apartados) + 2) * 100),
+                        text=f"Generando apartado: {titulo_apartado}...",
+                    )
+                    if modo_prueba:
+                        contenido_generado[titulo_apartado] = generar_apartado_informe_modo_prueba(
+                            titulo_apartado, datos_itf, minimo
+                        )
+                    else:
+                        contenido_generado[titulo_apartado] = generar_apartado_informe_con_chatgpt(
+                            titulo_apartado, datos_itf, minimo, modelo_openai
+                        )
+                progreso.progress(82, text="Construyendo tabla estimativa de costos...")
+                if modo_prueba:
+                    tabla_costos = generar_tabla_costos_modo_prueba(datos_itf)
+                else:
+                    try:
+                        tabla_costos = generar_tabla_costos_con_chatgpt(datos_itf, modelo_openai)
+                    except Exception:
+                        tabla_costos = generar_tabla_costos_modo_prueba(datos_itf)
+                datos_itf["contenido_generado"] = contenido_generado
+                datos_itf["tabla_costos"] = tabla_costos
+                datos_itf["tabla_entregables"] = generar_tabla_entregables(datos_itf)
+                progreso.progress(92, text="Generando documento Word...")
+                ruta_docx = generar_docx_informe_tecnico_final(datos_itf)
+                st.session_state.datos_informe_tecnico_final_generado = datos_itf
+                st.session_state.ruta_docx_informe_tecnico_final_generado = ruta_docx
+                progreso.progress(100, text="Informe Técnico Final generado correctamente.")
+                st.success("Informe Técnico Final generado correctamente en formato Word.")
+            except Exception as e:
+                st.error(f"No se pudo generar el Informe Técnico Final: {e}")
+                st.stop()
+
+        if st.session_state.datos_informe_tecnico_final_generado:
+            datos = st.session_state.datos_informe_tecnico_final_generado
+            st.markdown("## Resumen para validación")
+            st.write("**Proyecto:**", datos.get("nombre_proyecto", ""))
+            st.write("**Código:**", datos.get("codigo_proyecto", ""))
+            st.write("**Tipo:**", datos.get("tipo_proyecto_detallado", ""))
+            st.write("**Metodología:**", datos.get("metodologia_detallada", ""))
+            st.write("**Costo total estimado:**", formato_moneda_colombiana(datos.get("costo_total", 0)))
+            st.write("**Aceptación confirmada:**", "Sí" if datos.get("aceptacion_confirmada") else "No")
+            st.caption("La tabla de costos se presenta como estimación técnica, no como información contable certificada.")
+            if st.session_state.ruta_docx_informe_tecnico_final_generado and Path(st.session_state.ruta_docx_informe_tecnico_final_generado).exists():
+                ruta_docx = st.session_state.ruta_docx_informe_tecnico_final_generado
+                with open(ruta_docx, "rb") as archivo_docx:
+                    st.download_button(
+                        label="⬇️ Descargar Informe Técnico Final en Word",
+                        data=archivo_docx,
+                        file_name=Path(ruta_docx).name,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    )
         st.stop()
 
     if st.session_state.documento_seleccionado == "acta_cierre_ficha":
