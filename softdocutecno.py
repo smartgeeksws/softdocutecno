@@ -16,6 +16,13 @@ except ImportError:
     Document = None
 
 try:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+except ImportError:
+    Workbook = None
+
+try:
     from openai import OpenAI
 except ImportError:
     OpenAI = None
@@ -166,8 +173,8 @@ if "ruta_docx_informe_tecnico_final_generado" not in st.session_state:
 if "datos_lean_canvas_generado" not in st.session_state:
     st.session_state.datos_lean_canvas_generado = None
 
-if "ruta_docx_lean_canvas_generado" not in st.session_state:
-    st.session_state.ruta_docx_lean_canvas_generado = None
+if "ruta_xlsx_lean_canvas_generado" not in st.session_state:
+    st.session_state.ruta_xlsx_lean_canvas_generado = None
 
 
 # =====================================================
@@ -4526,8 +4533,10 @@ def generar_docx_informe_tecnico_final(datos: dict) -> str:
     datos_json["ruta_docx"] = ruta_docx
     guardar_datos_json(datos_json, ruta="datos_informe_tecnico_final.json")
     return ruta_docx
+
+
 # =====================================================
-# MODELO DE NEGOCIO LEAN CANVAS - FASE DE CIERRE / DOCX
+# MODELO DE NEGOCIO LEAN CANVAS - FASE DE CIERRE / XLSX
 # =====================================================
 
 ITEMS_LEAN_CANVAS = [
@@ -4543,103 +4552,122 @@ ITEMS_LEAN_CANVAS = [
 ]
 
 
+def limpiar_texto_canvas(texto: str) -> str:
+    """Normaliza texto para que Excel conserve párrafos y viñetas legibles."""
+    texto = str(texto or "").strip()
+    texto = texto.replace("\\n", "\n")
+    texto = texto.replace("- ", "• ")
+    while "\n\n\n" in texto:
+        texto = texto.replace("\n\n\n", "\n\n")
+    return texto
+
+
+def texto_base_lean_canvas(
+    item: str,
+    nombre_proyecto: str,
+    codigo_proyecto: str,
+    descripcion_producto: str,
+    aspectos_generacion: str,
+) -> str:
+    bases = {
+        "Problema": (
+            f"El proyecto {nombre_proyecto}, identificado con el código {codigo_proyecto}, parte de una necesidad asociada al producto descrito: {descripcion_producto}. "
+            "El problema debe formularse desde la experiencia real del usuario, identificando qué situación quiere resolver, qué limitaciones existen actualmente y por qué las alternativas disponibles no resultan suficientes.\n\n"
+            "• Identificar quién sufre el problema y en qué contexto.\n"
+            "• Precisar consecuencias operativas, económicas, técnicas o sociales.\n"
+            "• Reconocer soluciones actuales y sus debilidades.\n"
+            "• Validar el problema mediante entrevistas, observación o pruebas iniciales."
+        ),
+        "Segmentos de clientes": (
+            "Los segmentos de clientes corresponden a los grupos de usuarios, compradores, beneficiarios o instituciones que pueden percibir valor en la solución. "
+            "Para este proyecto se recomienda diferenciar usuarios directos, decisores de compra, influenciadores y aliados que facilitan adopción.\n\n"
+            "• Usuarios que enfrentan directamente la necesidad.\n"
+            "• Clientes que podrían pagar, contratar o implementar la solución.\n"
+            "• Organizaciones o instituciones que pueden facilitar acceso al mercado.\n"
+            "• Segmentos iniciales donde sea más fácil validar el producto."
+        ),
+        "Propuesta única de valor": (
+            "La propuesta única de valor explica por qué el producto merece ser adoptado frente a otras alternativas. Debe expresar de forma clara el beneficio central, el cambio que genera y el valor diferencial para el segmento priorizado.\n\n"
+            "• Beneficio principal para el usuario.\n"
+            "• Diferencia frente a soluciones existentes.\n"
+            "• Resultado esperado después de usar el producto.\n"
+            "• Razón por la cual el cliente debería interesarse en probarlo."
+        ),
+        "Solución": (
+            f"La solución se estructura a partir del producto descrito: {descripcion_producto}. Este bloque traduce la propuesta de valor en funcionalidades, componentes, procesos o servicios concretos.\n\n"
+            "• Características principales del producto.\n"
+            "• Funcionalidades o componentes esenciales.\n"
+            "• Condiciones mínimas para operar o implementarse.\n"
+            "• Evidencias necesarias para validar que la solución responde al problema."
+        ),
+        "Canales": (
+            "Los canales son los medios para comunicar, entregar, vender, implementar o acompañar la solución. Deben seleccionarse según los hábitos del segmento de clientes y la forma en que estos descubren, evalúan y adoptan productos similares.\n\n"
+            "• Canales digitales: redes sociales, web, WhatsApp, correo o plataformas.\n"
+            "• Canales presenciales: demostraciones, visitas técnicas, ferias o ruedas de negocio.\n"
+            "• Aliados institucionales o comerciales.\n"
+            "• Estrategias de soporte, capacitación y seguimiento."
+        ),
+        "Fuentes de ingresos": (
+            "Las fuentes de ingresos representan las formas mediante las cuales el proyecto podría capturar valor económico o sostener su operación. Deben plantearse como hipótesis a validar, no como ingresos garantizados.\n\n"
+            "• Venta directa del producto o prototipo.\n"
+            "• Servicios de implementación, instalación o personalización.\n"
+            "• Mantenimiento, soporte técnico o capacitación.\n"
+            "• Licenciamiento, suscripción o paquetes complementarios, si aplica."
+        ),
+        "Estructura de costos": (
+            "La estructura de costos identifica los recursos necesarios para desarrollar, operar, entregar y mejorar la solución. Este bloque permite entender la viabilidad inicial del modelo y los rubros que podrían tener mayor impacto.\n\n"
+            "• Diseño, desarrollo, prototipado o fabricación.\n"
+            "• Materiales, software, hardware o herramientas.\n"
+            "• Pruebas, validación, documentación y mejora.\n"
+            "• Comercialización, logística, soporte y mantenimiento."
+        ),
+        "Métricas clave": (
+            "Las métricas clave permiten evaluar si el modelo de negocio y la solución están generando resultados. Deben ser simples, medibles y relacionadas con adopción, desempeño, satisfacción o sostenibilidad.\n\n"
+            "• Número de usuarios interesados o clientes potenciales.\n"
+            "• Pruebas realizadas y resultados obtenidos.\n"
+            "• Tiempo ahorrado, reducción de errores o mejora lograda.\n"
+            "• Conversión, retención, satisfacción o frecuencia de uso."
+        ),
+        "Ventaja diferencial": (
+            "La ventaja diferencial es aquello que puede hacer que el proyecto sea difícil de copiar o sustituir. Puede originarse en conocimiento técnico, adaptación local, diseño, experiencia del equipo, datos, alianzas o validaciones.\n\n"
+            "• Conocimiento especializado o dominio del problema.\n"
+            "• Adaptación al contexto real del usuario.\n"
+            "• Diseño, tecnología o metodología diferenciadora.\n"
+            "• Capacidad de mejora continua y cercanía con el cliente."
+        ),
+    }
+
+    texto = bases.get(item, "")
+    texto += (
+        f"\n\nAspectos a considerar para este análisis: {aspectos_generacion}. "
+        "El contenido debe asumirse como una hipótesis estratégica inicial, sujeta a validación mediante entrevistas, pruebas piloto, revisión del mercado y contraste con clientes reales."
+    )
+
+    while conteo_palabras(texto) < 150:
+        texto += (
+            "\n\n• Recomendación de validación: documentar supuestos, revisar competidores, conversar con usuarios potenciales, "
+            "analizar restricciones de implementación y ajustar el modelo conforme aparezcan nuevas evidencias."
+        )
+
+    return limpiar_texto_canvas(texto)
+
+
 def generar_lean_canvas_modo_prueba(
     nombre_proyecto: str,
     codigo_proyecto: str,
     descripcion_producto: str,
     aspectos_generacion: str,
 ) -> dict:
-    base = {}
-
-    textos_base = {
-        "Problema": (
-            f"El proyecto {nombre_proyecto}, identificado con el código {codigo_proyecto}, parte de una necesidad "
-            f"relacionada con el producto descrito por el usuario: {descripcion_producto}. El problema central debe entenderse "
-            "como una situación que afecta a un grupo específico de usuarios, clientes, beneficiarios o actores del contexto, "
-            "quienes actualmente enfrentan limitaciones, ineficiencias, costos, falta de acceso, baja calidad, ausencia de "
-            "herramientas, dificultad para tomar decisiones o poca disponibilidad de soluciones ajustadas a su realidad. "
-            "Para formular adecuadamente este bloque, se recomienda precisar quién experimenta la necesidad, con qué frecuencia "
-            "ocurre, qué consecuencias genera, qué alternativas usa actualmente y por qué esas alternativas no resuelven de "
-            "manera suficiente la situación. "
-        ),
-        "Segmentos de clientes": (
-            "Los segmentos de clientes corresponden a los grupos de personas, organizaciones, empresas, instituciones o "
-            "beneficiarios que pueden percibir valor en la solución propuesta. Para este proyecto, deben analizarse los usuarios "
-            "directos del producto, los posibles compradores, quienes influyen en la decisión de adopción y quienes se benefician "
-            "indirectamente del resultado. La segmentación debe considerar variables como ubicación, tipo de actividad, nivel de "
-            "necesidad, capacidad de pago, frecuencia de uso, conocimiento técnico, hábitos de consumo, condiciones operativas "
-            "y relación con el problema identificado. "
-        ),
-        "Propuesta única de valor": (
-            "La propuesta única de valor describe por qué la solución resulta relevante, diferente y útil frente a las alternativas "
-            "existentes. En este caso, debe conectar directamente el problema identificado con el producto planteado, mostrando el "
-            "beneficio principal que recibiría el usuario o cliente. Esta propuesta no debe limitarse a decir que el producto es "
-            "innovador; debe explicar qué mejora, qué facilita, qué reduce, qué optimiza o qué permite hacer de manera más clara, "
-            "económica, segura, rápida, personalizada o eficiente. "
-        ),
-        "Solución": (
-            f"La solución se estructura a partir de la descripción del producto: {descripcion_producto}. Este bloque debe traducir "
-            "la propuesta de valor en características concretas, funcionalidades, componentes, servicios, procesos o entregables que "
-            "permitan resolver el problema. La solución debe presentarse de forma clara y verificable, identificando qué hace el "
-            "producto, cómo lo hace, qué recursos requiere, qué resultado ofrece y qué condiciones mínimas necesita para operar "
-            "correctamente. "
-        ),
-        "Canales": (
-            "Los canales son los medios a través de los cuales el proyecto puede comunicar, entregar, implementar, vender o acompañar "
-            "la solución. Pueden incluir canales digitales, redes sociales, página web, contacto directo, aliados institucionales, "
-            "ferias, demostraciones, visitas técnicas, distribuidores, capacitaciones, WhatsApp, correo electrónico o plataformas "
-            "especializadas. La selección de canales debe responder al comportamiento del segmento de clientes y a la forma en que "
-            "estos descubren, evalúan, adquieren y utilizan soluciones similares. "
-        ),
-        "Fuentes de ingresos": (
-            "Las fuentes de ingresos representan las formas mediante las cuales el proyecto podría capturar valor económico o sostener "
-            "su operación en el tiempo. Dependiendo de la naturaleza del producto, podrían considerarse ventas directas, licenciamiento, "
-            "suscripciones, asesorías, implementación, mantenimiento, personalización, capacitación, soporte técnico, venta de repuestos, "
-            "servicios complementarios o alianzas comerciales. Este bloque debe plantearse como una hipótesis de modelo de negocio y no "
-            "como una promesa financiera cerrada. "
-        ),
-        "Estructura de costos": (
-            "La estructura de costos identifica los recursos, actividades e inversiones necesarias para desarrollar, operar, entregar "
-            "y mantener la solución. Puede incluir costos de diseño, desarrollo, materiales, software, hardware, prototipado, pruebas, "
-            "validación, marketing, logística, talento humano, mantenimiento, soporte, infraestructura, documentación y mejora continua. "
-            "Este análisis ayuda a comprender la viabilidad inicial del proyecto y a identificar los rubros que podrían tener mayor peso "
-            "en una futura etapa de implementación o escalamiento. "
-        ),
-        "Métricas clave": (
-            "Las métricas clave permiten evaluar si el modelo de negocio y la solución están generando resultados. Para este proyecto, "
-            "pueden considerarse indicadores asociados al número de usuarios atendidos, tasa de adopción, satisfacción del usuario, "
-            "tiempo ahorrado, reducción de errores, cantidad de pruebas exitosas, número de prototipos implementados, clientes potenciales "
-            "contactados, conversión comercial, frecuencia de uso, retención, ingresos estimados o nivel de cumplimiento de objetivos "
-            "técnicos. "
-        ),
-        "Ventaja diferencial": (
-            "La ventaja diferencial corresponde al elemento que puede hacer que el proyecto sea difícil de copiar o sustituir. Puede "
-            "estar relacionada con conocimiento técnico especializado, cercanía con el usuario, adaptación al contexto local, diseño "
-            "personalizado, bajo costo, facilidad de uso, integración tecnológica, experiencia del equipo, datos propios, metodología "
-            "de implementación, alianzas, marca, propiedad intelectual, validaciones previas o capacidad de mejora continua. "
-        ),
-    }
-
-    for item in ITEMS_LEAN_CANVAS:
-        texto = textos_base[item]
-        texto += (
-            f" Además, para la generación de este modelo se deben considerar los siguientes aspectos aportados por el usuario: "
-            f"{aspectos_generacion}. "
-            "El análisis debe entenderse como una propuesta inicial y editable de modelo de negocio, sujeta a validación con clientes, "
-            "pruebas de mercado, entrevistas, revisión técnica y contraste con el contexto real de implementación. "
+    return {
+        item: texto_base_lean_canvas(
+            item,
+            nombre_proyecto,
+            codigo_proyecto,
+            descripcion_producto,
+            aspectos_generacion,
         )
-
-        while conteo_palabras(texto) < 300:
-            texto += (
-                " Para fortalecer este bloque, se recomienda documentar supuestos, validar la información con usuarios reales, "
-                "contrastar alternativas existentes, identificar riesgos de adopción, revisar condiciones de operación y precisar "
-                "qué evidencias permitirían confirmar o ajustar la hipótesis planteada. El modelo Lean Canvas debe funcionar como "
-                "una herramienta de análisis estratégico y no como una garantía definitiva de éxito comercial."
-            )
-
-        base[item] = texto.strip()
-
-    return base
+        for item in ITEMS_LEAN_CANVAS
+    }
 
 
 def generar_lean_canvas_con_chatgpt(
@@ -4663,7 +4691,9 @@ Eres un consultor senior en modelos de negocio, innovación y proyectos de base 
 Debes generar un Lean Canvas profesional para un proyecto de SENA Tecnoparque.
 Responde únicamente JSON válido, sin markdown y sin texto adicional.
 No inventes datos financieros certificados, clientes reales, alianzas reales, validaciones reales ni ventas.
-Cada uno de los 9 campos debe tener más de 300 palabras.
+Cada uno de los 9 campos debe tener entre 150 y 220 palabras.
+Puedes estructurar cada campo en párrafos cortos y viñetas cuando sea útil.
+Usa saltos de línea con \n para separar párrafos o ideas.
 La redacción debe ser técnica, estratégica, clara y orientada a validación del modelo de negocio.
 """
 
@@ -4725,16 +4755,16 @@ Formato JSON obligatorio:
         )
 
         for item in ITEMS_LEAN_CANVAS:
-            if item not in datos or not isinstance(datos[item], str) or conteo_palabras(datos[item]) < 250:
+            if item not in datos or not isinstance(datos[item], str) or conteo_palabras(datos[item]) < 120:
                 datos[item] = base[item]
 
-            while conteo_palabras(datos[item]) < 300:
+            while conteo_palabras(datos[item]) < 150:
                 datos[item] += (
-                    " Este bloque debe validarse mediante entrevistas, observación del usuario, análisis del entorno, revisión "
-                    "de alternativas existentes y pruebas de adopción. La información aquí presentada constituye una hipótesis "
-                    "estratégica inicial que puede ajustarse conforme se obtengan nuevas evidencias del mercado y del comportamiento "
-                    "real de los usuarios."
+                    "\n\n• Validación sugerida: realizar entrevistas con usuarios potenciales, revisar alternativas existentes, "
+                    "documentar supuestos del mercado y ajustar este bloque conforme se obtenga evidencia real."
                 )
+
+            datos[item] = limpiar_texto_canvas(datos[item])
 
         return {item: datos[item] for item in ITEMS_LEAN_CANVAS}
 
@@ -4747,134 +4777,139 @@ Formato JSON obligatorio:
         )
 
 
-def generar_docx_lean_canvas(datos: dict) -> str:
-    if Document is None:
-        raise ImportError("No está instalada python-docx. Agrégala a requirements.txt e instala con: pip install python-docx")
+def generar_xlsx_lean_canvas(datos: dict) -> str:
+    if Workbook is None:
+        raise ImportError("No está instalada openpyxl. Agrégala a requirements.txt e instala con: pip install openpyxl")
 
     Path(CARPETA_SALIDA).mkdir(parents=True, exist_ok=True)
 
-    archivo = f"Lean_Canvas_{safe_filename(datos.get('codigo_proyecto', 'proyecto'))}.docx"
-    ruta_docx = str(Path(CARPETA_SALIDA) / archivo)
+    archivo = f"Lean_Canvas_{safe_filename(datos.get('codigo_proyecto', 'proyecto'))}.xlsx"
+    ruta_xlsx = str(Path(CARPETA_SALIDA) / archivo)
 
-    documento = Document()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Lean Canvas"
 
-    section = documento.sections[0]
-    section.orientation = 1  # Landscape
-    section.page_width = DocxCm(29.7)
-    section.page_height = DocxCm(21.0)
-    section.top_margin = DocxCm(1.4)
-    section.bottom_margin = DocxCm(1.2)
-    section.left_margin = DocxCm(1.2)
-    section.right_margin = DocxCm(1.2)
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.paperSize = 9  # A4
+    ws.page_margins.left = 0.25
+    ws.page_margins.right = 0.25
+    ws.page_margins.top = 0.35
+    ws.page_margins.bottom = 0.35
+    ws.sheet_view.showGridLines = False
 
-    estilo_normal = documento.styles["Normal"]
-    estilo_normal.font.name = "Arial"
-    estilo_normal.font.size = DocxPt(8)
+    verde = "39A935"
+    verde_claro = "EAF5EA"
+    gris_claro = "F4F4F4"
+    blanco = "FFFFFF"
+    negro = "000000"
 
-    encabezado = documento.add_paragraph()
-    encabezado.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = encabezado.add_run("MODELO DE NEGOCIO LEAN CANVAS")
-    run.bold = True
-    run.font.size = DocxPt(18)
-    run.font.color.rgb = RGBColor(57, 169, 53)
+    fill_titulo = PatternFill("solid", fgColor=verde)
+    fill_bloque = PatternFill("solid", fgColor=verde_claro)
+    fill_info = PatternFill("solid", fgColor=gris_claro)
 
-    subtitulo = documento.add_paragraph()
-    subtitulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r_sub = subtitulo.add_run(f"{datos.get('codigo_proyecto', '')} - {datos.get('nombre_proyecto', '')}")
-    r_sub.bold = True
-    r_sub.font.size = DocxPt(11)
-
-    descripcion = documento.add_paragraph()
-    descripcion.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    descripcion.add_run("Descripción del producto: ").bold = True
-    descripcion.add_run(datos.get("descripcion_producto", ""))
-
-    nota = documento.add_paragraph()
-    nota.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    r_nota = nota.add_run(
-        "Nota: El Lean Canvas generado corresponde a una propuesta estratégica inicial para análisis y validación. "
-        "No constituye certificación comercial, financiera ni validación definitiva de mercado."
+    borde = Border(
+        left=Side(style="thin", color=negro),
+        right=Side(style="thin", color=negro),
+        top=Side(style="thin", color=negro),
+        bottom=Side(style="thin", color=negro),
     )
-    r_nota.italic = True
-    r_nota.font.size = DocxPt(8)
+
+    for col in range(1, 11):
+        ws.column_dimensions[get_column_letter(col)].width = 18
+
+    ws.merge_cells("A1:J1")
+    ws["A1"] = "MODELO DE NEGOCIO LEAN CANVAS"
+    ws["A1"].font = Font(bold=True, size=18, color=blanco)
+    ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["A1"].fill = fill_titulo
+    ws.row_dimensions[1].height = 30
+
+    ws.merge_cells("A2:J2")
+    ws["A2"] = f"{datos.get('codigo_proyecto', '')} - {datos.get('nombre_proyecto', '')}"
+    ws["A2"].font = Font(bold=True, size=12)
+    ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["A2"].fill = fill_info
+    ws.row_dimensions[2].height = 24
+
+    ws.merge_cells("A3:J4")
+    ws["A3"] = "Descripción del producto: " + datos.get("descripcion_producto", "")
+    ws["A3"].font = Font(size=10)
+    ws["A3"].alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+    ws["A3"].fill = fill_info
+
+    for row in ws["A3:J4"]:
+        for cell in row:
+            cell.border = borde
+            cell.fill = fill_info
+            cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
 
     contenido = datos.get("contenido_lean_canvas", {})
 
-    # Estructura visual clásica Lean Canvas en 5 columnas x 3 filas.
-    tabla = documento.add_table(rows=3, cols=5)
-    tabla.style = "Table Grid"
-    tabla.alignment = WD_TABLE_ALIGNMENT.CENTER
-    tabla.autofit = True
+    def escribir_bloque(rango: str, titulo: str):
+        ws.merge_cells(rango)
+        celda = ws[rango.split(":")[0]]
+        texto = limpiar_texto_canvas(contenido.get(titulo, ""))
+        celda.value = f"{titulo.upper()}\n\n{texto}"
+        celda.font = Font(size=9)
+        celda.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+        celda.fill = fill_bloque
+        celda.border = borde
+        for row in ws[rango]:
+            for cell in row:
+                cell.border = borde
+                cell.fill = fill_bloque
+                cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
 
-    mapa_canvas = [
-        ["Problema", "Solución", "Propuesta única de valor", "Ventaja diferencial", "Segmentos de clientes"],
-        ["Problema", "Métricas clave", "Propuesta única de valor", "Canales", "Segmentos de clientes"],
-        ["Estructura de costos", "Estructura de costos", "Fuentes de ingresos", "Fuentes de ingresos", "Fuentes de ingresos"],
-    ]
+    escribir_bloque("A6:B18", "Problema")
+    escribir_bloque("C6:D11", "Solución")
+    escribir_bloque("C12:D18", "Métricas clave")
+    escribir_bloque("E6:F18", "Propuesta única de valor")
+    escribir_bloque("G6:H11", "Ventaja diferencial")
+    escribir_bloque("G12:H18", "Canales")
+    escribir_bloque("I6:J18", "Segmentos de clientes")
+    escribir_bloque("A20:E28", "Estructura de costos")
+    escribir_bloque("F20:J28", "Fuentes de ingresos")
 
-    celdas_usadas = set()
+    for row in range(6, 29):
+        ws.row_dimensions[row].height = 42
 
-    for fila_idx in range(3):
-        for col_idx in range(5):
-            celda = tabla.cell(fila_idx, col_idx)
-            clave = mapa_canvas[fila_idx][col_idx]
+    ws.freeze_panes = "A6"
 
-            if (fila_idx, col_idx) in celdas_usadas:
-                continue
+    ws2 = wb.create_sheet("Detalle")
+    ws2.sheet_view.showGridLines = False
+    ws2.column_dimensions["A"].width = 28
+    ws2.column_dimensions["B"].width = 120
 
-            # Combinaciones para parecerse al Lean Canvas.
-            if clave == "Problema" and fila_idx == 0 and col_idx == 0:
-                celda = celda.merge(tabla.cell(1, 0))
-                celdas_usadas.add((1, 0))
+    ws2["A1"] = "Bloque"
+    ws2["B1"] = "Contenido generado"
+    ws2["A1"].font = Font(bold=True, color=blanco)
+    ws2["B1"].font = Font(bold=True, color=blanco)
+    ws2["A1"].fill = fill_titulo
+    ws2["B1"].fill = fill_titulo
+    ws2["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    ws2["B1"].alignment = Alignment(horizontal="center", vertical="center")
 
-            if clave == "Propuesta única de valor" and fila_idx == 0 and col_idx == 2:
-                celda = celda.merge(tabla.cell(1, 2))
-                celdas_usadas.add((1, 2))
-
-            if clave == "Segmentos de clientes" and fila_idx == 0 and col_idx == 4:
-                celda = celda.merge(tabla.cell(1, 4))
-                celdas_usadas.add((1, 4))
-
-            if clave == "Estructura de costos" and fila_idx == 2 and col_idx == 0:
-                celda = celda.merge(tabla.cell(2, 1))
-                celdas_usadas.add((2, 1))
-
-            if clave == "Fuentes de ingresos" and fila_idx == 2 and col_idx == 2:
-                celda = celda.merge(tabla.cell(2, 4))
-                celdas_usadas.add((2, 3))
-                celdas_usadas.add((2, 4))
-
-            celda.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
-            sombrear_celda_docx(celda, "F3F8F2")
-
-            celda.text = ""
-            p_titulo = celda.paragraphs[0]
-            p_titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            r_titulo = p_titulo.add_run(clave.upper())
-            r_titulo.bold = True
-            r_titulo.font.size = DocxPt(8.5)
-            r_titulo.font.color.rgb = RGBColor(57, 169, 53)
-
-            p_texto = celda.add_paragraph()
-            p_texto.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-            r_texto = p_texto.add_run(contenido.get(clave, ""))
-            r_texto.font.size = DocxPt(6.5)
-
-    documento.add_page_break()
-
-    documento.add_paragraph("DESARROLLO DETALLADO DE LOS 9 BLOQUES", style=None).runs[0].bold = True
-
+    fila = 2
     for item in ITEMS_LEAN_CANVAS:
-        agregar_titulo_docx(documento, item)
-        agregar_texto_docx(documento, contenido.get(item, ""))
+        ws2[f"A{fila}"] = item
+        ws2[f"B{fila}"] = limpiar_texto_canvas(contenido.get(item, ""))
+        ws2[f"A{fila}"].font = Font(bold=True)
+        ws2[f"A{fila}"].alignment = Alignment(vertical="top", wrap_text=True)
+        ws2[f"B{fila}"].alignment = Alignment(vertical="top", wrap_text=True)
+        ws2[f"A{fila}"].border = borde
+        ws2[f"B{fila}"].border = borde
+        ws2.row_dimensions[fila].height = 120
+        fila += 1
 
-    documento.save(ruta_docx)
+    wb.save(ruta_xlsx)
 
     datos_json = dict(datos)
-    datos_json["ruta_docx"] = ruta_docx
+    datos_json["ruta_xlsx"] = ruta_xlsx
     guardar_datos_json(datos_json, ruta="datos_lean_canvas.json")
 
-    return ruta_docx
+    return ruta_xlsx
+
 # =====================================================
 # SIDEBAR DE CONFIGURACIÓN
 # =====================================================
@@ -6238,13 +6273,13 @@ elif st.session_state.fase_seleccionada == "cierre":
     if st.session_state.documento_seleccionado is None:
         st.info("Selecciona un documento de cierre para continuar.")
         st.stop()
-    
+
     if st.session_state.documento_seleccionado == "lean_canvas":
         st.markdown("---")
         st.subheader("Modelo de negocio Lean Canvas")
 
         st.info(
-            "Este módulo genera un modelo de negocio Lean Canvas en Word, en formato horizontal, "
+            "Este módulo genera un modelo de negocio Lean Canvas en Excel, en formato horizontal, "
             "con los 9 bloques estratégicos del canvas."
         )
 
@@ -6328,7 +6363,7 @@ elif st.session_state.fase_seleccionada == "cierre":
                 )
 
             progreso.progress(65)
-            estado.info("Construyendo documento Word horizontal...")
+            estado.info("Construyendo archivo Excel horizontal...")
 
             datos_lean_canvas = {
                 "tipo_documento": "Modelo de negocio Lean Canvas",
@@ -6341,15 +6376,15 @@ elif st.session_state.fase_seleccionada == "cierre":
             }
 
             try:
-                ruta_docx = generar_docx_lean_canvas(datos_lean_canvas)
+                ruta_xlsx = generar_xlsx_lean_canvas(datos_lean_canvas)
                 st.session_state.datos_lean_canvas_generado = datos_lean_canvas
-                st.session_state.ruta_docx_lean_canvas_generado = ruta_docx
+                st.session_state.ruta_xlsx_lean_canvas_generado = ruta_xlsx
                 progreso.progress(100)
                 estado.success("Modelo de negocio Lean Canvas generado correctamente.")
             except Exception as e:
                 progreso.empty()
                 estado.empty()
-                st.error(f"No se pudo generar el documento Word: {e}")
+                st.error(f"No se pudo generar el archivo Excel: {e}")
                 st.stop()
 
         if st.session_state.datos_lean_canvas_generado:
@@ -6365,7 +6400,7 @@ elif st.session_state.fase_seleccionada == "cierre":
                 with st.expander(item):
                     st.write(datos["contenido_lean_canvas"].get(item, ""))
 
-            col_json, col_docx = st.columns(2)
+            col_json, col_xlsx = st.columns(2)
 
             with col_json:
                 st.download_button(
@@ -6375,16 +6410,16 @@ elif st.session_state.fase_seleccionada == "cierre":
                     mime="application/json"
                 )
 
-            with col_docx:
-                ruta_docx = st.session_state.ruta_docx_lean_canvas_generado
+            with col_xlsx:
+                ruta_xlsx = st.session_state.ruta_xlsx_lean_canvas_generado
 
-                if ruta_docx and Path(ruta_docx).exists():
-                    with open(ruta_docx, "rb") as f:
+                if ruta_xlsx and Path(ruta_xlsx).exists():
+                    with open(ruta_xlsx, "rb") as f:
                         st.download_button(
-                            label="⬇️ Descargar Word Lean Canvas",
+                            label="⬇️ Descargar Excel Lean Canvas",
                             data=f,
-                            file_name=Path(ruta_docx).name,
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            file_name=Path(ruta_xlsx).name,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
 
         st.stop()
