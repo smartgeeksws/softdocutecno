@@ -2,4 +2,3 @@ streamlit
 openai
 reportlab
 python-docx
-openpyxl
