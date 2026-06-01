@@ -4582,6 +4582,36 @@ def resumen_canvas_pdf(texto: str, max_palabras: int = 46) -> str:
     return extraer_palabras(" ".join(partes), max_palabras)
 
 
+def interpretar_insumo_lean_canvas(nombre_proyecto: str, descripcion_producto: str, aspectos_generacion: str) -> str:
+    """
+    Construye una lectura contextual breve para el modo prueba, usando los campos como insumo
+    sin transcribirlos literalmente en el PDF.
+    """
+    texto_total = f"{nombre_proyecto} {descripcion_producto} {aspectos_generacion}".lower()
+
+    categorias = []
+    if any(p in texto_total for p in ["software", "app", "plataforma", "sistema", "web", "aplicación", "aplicacion", "dashboard", "base de datos"]):
+        categorias.append("solución digital o software")
+    if any(p in texto_total for p in ["sensor", "electrónica", "electronica", "automatización", "automatizacion", "iot", "microcontrolador", "dispositivo"]):
+        categorias.append("desarrollo electrónico o dispositivo tecnológico")
+    if any(p in texto_total for p in ["marca", "logotipo", "identidad", "branding", "manual de marca"]):
+        categorias.append("desarrollo de marca e identidad visual")
+    if any(p in texto_total for p in ["agro", "alimento", "café", "cafe", "proceso", "producto agroindustrial"]):
+        categorias.append("prototipo o solución agroindustrial")
+    if any(p in texto_total for p in ["diseño", "diseño industrial", "cad", "prototipo", "producto físico", "producto fisico"]):
+        categorias.append("diseño o prototipo de producto")
+    if any(p in texto_total for p in ["ia", "inteligencia artificial", "modelo", "clasificación", "clasificacion", "predicción", "prediccion"]):
+        categorias.append("solución basada en inteligencia artificial")
+
+    tipo = ", ".join(dict.fromkeys(categorias)) if categorias else "producto, servicio o prototipo de base tecnológica"
+
+    return (
+        f"El proyecto se interpreta como una {tipo}. El análisis del Lean Canvas debe orientar el producto hacia usuarios reales, "
+        "necesidades concretas, validación temprana, canales de adopción y sostenibilidad del modelo de negocio. "
+        "Los textos deben estar aplicados a la naturaleza de la solución y a las condiciones estratégicas sugeridas por el usuario."
+    )
+
+
 def texto_base_lean_canvas(
     item: str,
     nombre_proyecto: str,
@@ -4590,98 +4620,102 @@ def texto_base_lean_canvas(
     aspectos_generacion: str,
 ) -> str:
     """
-    Modo prueba: usa los campos como insumo conceptual, sin copiarlos literalmente en el resultado.
-    La versión con IA hará una interpretación más específica.
+    Modo prueba: interpreta los campos como contexto del producto, sin copiarlos literalmente.
+    Este fallback no reemplaza la precisión de la IA, pero evita textos pegados del formulario.
     """
+    interpretacion = interpretar_insumo_lean_canvas(nombre_proyecto, descripcion_producto, aspectos_generacion)
+
     bases = {
         "Problema": (
-            f"Para el proyecto {nombre_proyecto}, el problema se interpreta como una necesidad concreta del mercado o del usuario que aún no está resuelta de forma suficiente por las alternativas disponibles. "
-            "El análisis debe concentrarse en identificar quién experimenta la situación, qué consecuencias genera, por qué las soluciones actuales no son plenamente satisfactorias y qué impacto tendría resolverla.\n\n"
-            "• Identificar usuarios afectados y contexto de uso.\n"
-            "• Reconocer consecuencias operativas, económicas, sociales o técnicas.\n"
-            "• Analizar alternativas existentes y sus limitaciones.\n"
-            "• Validar la existencia del problema mediante entrevistas, observación o pruebas iniciales."
+            f"{interpretacion}\n\n"
+            "El problema debe formularse a partir de la necesidad principal que la solución busca atender. Para este producto, el análisis debe identificar qué usuario o cliente experimenta la dificultad, qué consecuencias le genera y por qué las alternativas actuales pueden resultar insuficientes. "
+            "También conviene distinguir entre el problema funcional, el problema económico y el problema de adopción: una solución puede ser técnicamente viable, pero requerir claridad sobre el dolor real que motiva al cliente a usarla, comprarla o implementarla.\n\n"
+            "• Necesidad central que afecta al usuario objetivo.\n"
+            "• Consecuencias de no resolverla.\n"
+            "• Alternativas actuales y limitaciones.\n"
+            "• Evidencias necesarias para confirmar que el problema existe."
         ),
         "Segmentos de clientes": (
-            "Los segmentos de clientes deben definirse a partir de los usuarios, compradores, beneficiarios o entidades que podrían percibir valor en la solución. "
-            "Es importante diferenciar entre quien usa el producto, quien decide la compra, quien influye en la adopción y quien puede actuar como aliado para facilitar acceso al mercado.\n\n"
-            "• Usuarios directos con necesidad evidente.\n"
-            "• Clientes potenciales con capacidad de implementación o pago.\n"
-            "• Instituciones o aliados que acercan la solución al mercado.\n"
-            "• Segmentos iniciales donde sea más rápido validar la propuesta."
+            f"{interpretacion}\n\n"
+            "Los segmentos de clientes deben definirse según quién recibe valor del producto y quién tiene capacidad de decisión o compra. En este caso, deben considerarse usuarios directos, compradores, aliados de implementación y beneficiarios indirectos. "
+            "La segmentación debe priorizar grupos donde la necesidad sea más evidente y donde sea posible validar rápidamente el interés, la utilidad y la disposición a adoptar la solución.\n\n"
+            "• Usuarios finales que interactúan con la solución.\n"
+            "• Clientes o entidades que podrían pagar o implementar.\n"
+            "• Aliados que facilitan entrada al mercado.\n"
+            "• Primer segmento recomendado para pruebas piloto."
         ),
         "Propuesta única de valor": (
-            "La propuesta única de valor debe expresar el beneficio central que hace relevante la solución frente a otras opciones. "
-            "No se trata solo de afirmar que el producto es innovador, sino de explicar qué mejora, qué simplifica, qué reduce, qué optimiza o qué habilita para el cliente o usuario final.\n\n"
-            "• Beneficio principal y resultado esperado.\n"
-            "• Diferencia frente a alternativas actuales.\n"
-            "• Razón para despertar interés en el cliente.\n"
-            "• Promesa clara que pueda validarse con evidencia."
+            f"{interpretacion}\n\n"
+            "La propuesta de valor debe explicar el beneficio específico que el producto entrega frente a la situación actual. Debe resaltar qué mejora, qué reduce, qué facilita, qué permite controlar, automatizar, visualizar, diseñar, producir, comunicar o validar, según la naturaleza del desarrollo. "
+            "La promesa debe ser clara y comprobable; no debe presentarse como éxito garantizado, sino como una hipótesis de valor que puede validarse con usuarios reales.\n\n"
+            "• Beneficio principal para el cliente.\n"
+            "• Diferencia frente a alternativas existentes.\n"
+            "• Resultado esperado al usar la solución.\n"
+            "• Evidencia necesaria para validar la propuesta."
         ),
         "Solución": (
-            "La solución debe traducir la propuesta de valor en componentes, funcionalidades, servicios, procesos o características concretas. "
-            "El producto debe describirse desde lo que permite hacer, las condiciones bajo las cuales opera y los elementos mínimos que deben demostrarse para verificar que responde al problema identificado.\n\n"
-            "• Características esenciales del producto o servicio.\n"
-            "• Funcionalidades prioritarias para una primera validación.\n"
-            "• Recursos técnicos requeridos para operar.\n"
-            "• Evidencias necesarias para comprobar desempeño."
+            f"{interpretacion}\n\n"
+            "La solución debe describir cómo el producto responde al problema mediante componentes, funcionalidades, servicios, documentos, prototipos o procesos concretos. Debe quedar claro qué entrega el proyecto, cómo lo usa el cliente y qué elementos mínimos requiere para funcionar. "
+            "También deben priorizarse características esenciales para una primera versión validable, evitando sobrecargar el producto con funciones no comprobadas.\n\n"
+            "• Funcionalidades o componentes principales.\n"
+            "• Forma de uso o implementación.\n"
+            "• Recursos técnicos mínimos requeridos.\n"
+            "• Resultado que recibe el usuario."
         ),
         "Canales": (
-            "Los canales representan los medios mediante los cuales el proyecto comunica, entrega, implementa, vende o acompaña la solución. "
-            "Su selección debe responder al comportamiento del segmento de clientes y a la forma en que estos descubren, evalúan y adoptan soluciones similares.\n\n"
-            "• Canales digitales como web, redes sociales, WhatsApp o correo.\n"
-            "• Canales presenciales como ferias, demostraciones y visitas técnicas.\n"
-            "• Aliados institucionales, comerciales o territoriales.\n"
-            "• Estrategias de soporte, capacitación y seguimiento."
+            f"{interpretacion}\n\n"
+            "Los canales deben seleccionarse de acuerdo con el comportamiento del cliente objetivo y con el nivel de explicación técnica que requiere el producto. Una solución tecnológica puede necesitar demostraciones, pilotos, visitas técnicas, contenidos digitales, acompañamiento, redes sociales, página web, WhatsApp, aliados institucionales o ferias especializadas. "
+            "La clave es elegir canales que permitan educar al cliente, mostrar evidencia y facilitar adopción.\n\n"
+            "• Canales de descubrimiento y comunicación.\n"
+            "• Canales de demostración o validación.\n"
+            "• Canales de venta, implementación o soporte.\n"
+            "• Aliados para acceso al mercado."
         ),
         "Fuentes de ingresos": (
-            "Las fuentes de ingresos deben formularse como hipótesis de monetización o sostenibilidad, no como ventas garantizadas. "
-            "Este bloque permite analizar cómo el proyecto podría capturar valor económico según el tipo de solución, el cliente objetivo y la forma de entrega más viable.\n\n"
-            "• Venta directa del producto o prototipo.\n"
-            "• Servicios de implementación, instalación o personalización.\n"
-            "• Mantenimiento, soporte técnico o capacitación.\n"
-            "• Licenciamiento, suscripción o servicios complementarios, si aplica."
+            f"{interpretacion}\n\n"
+            "Las fuentes de ingresos deben plantearse como hipótesis coherentes con el tipo de solución. Pueden incluir venta directa, implementación, personalización, mantenimiento, licenciamiento, suscripción, capacitación, asesoría, soporte técnico, producción bajo pedido, servicios complementarios o alianzas. "
+            "Este bloque no debe afirmar ventas existentes; debe proponer formas razonables de capturar valor si el mercado valida la necesidad.\n\n"
+            "• Forma principal de monetización.\n"
+            "• Servicios complementarios posibles.\n"
+            "• Ingresos recurrentes, si aplican.\n"
+            "• Condiciones para probar disposición de pago."
         ),
         "Estructura de costos": (
-            "La estructura de costos identifica los recursos necesarios para desarrollar, entregar, operar y mejorar la solución. "
-            "Este análisis ayuda a reconocer qué rubros pueden tener mayor impacto y qué elementos deben considerarse en una etapa de validación, implementación o escalamiento.\n\n"
-            "• Diseño, desarrollo, prototipado o fabricación.\n"
-            "• Materiales, software, hardware o herramientas.\n"
-            "• Pruebas, validación, documentación y mejora.\n"
-            "• Comercialización, logística, soporte y mantenimiento."
+            f"{interpretacion}\n\n"
+            "La estructura de costos debe reflejar los recursos necesarios para diseñar, desarrollar, validar, entregar y sostener el producto. Según el caso, puede incluir materiales, software, hardware, diseño, programación, fabricación, pruebas, documentación, marketing, logística, soporte, mantenimiento, licencias o talento humano. "
+            "La finalidad es entender qué rubros impactan la viabilidad y cuáles deben priorizarse en una etapa inicial.\n\n"
+            "• Costos de desarrollo o prototipado.\n"
+            "• Costos de operación y soporte.\n"
+            "• Costos de validación y documentación.\n"
+            "• Costos de comercialización o implementación."
         ),
         "Métricas clave": (
-            "Las métricas clave permiten evaluar si la solución y el modelo de negocio avanzan de manera favorable. "
-            "Deben ser indicadores simples, medibles y conectados con adopción, satisfacción, desempeño, uso, conversión o sostenibilidad.\n\n"
-            "• Usuarios interesados o clientes potenciales identificados.\n"
-            "• Pruebas realizadas y resultados obtenidos.\n"
-            "• Ahorro de tiempo, reducción de errores o mejora lograda.\n"
-            "• Conversión, retención, satisfacción o frecuencia de uso."
+            f"{interpretacion}\n\n"
+            "Las métricas clave deben medir si el producto realmente resuelve el problema y si existe interés del mercado. Deben estar conectadas con uso, adopción, satisfacción, desempeño, ahorro, reducción de errores, clientes potenciales, conversión, retención, pruebas exitosas o validaciones técnicas. "
+            "Cada métrica debe ayudar a tomar decisiones sobre mejora, continuidad o escalamiento.\n\n"
+            "• Usuarios interesados o pruebas realizadas.\n"
+            "• Nivel de satisfacción o adopción.\n"
+            "• Indicadores de desempeño técnico.\n"
+            "• Conversión, recurrencia o intención de compra."
         ),
         "Ventaja diferencial": (
-            "La ventaja diferencial corresponde a aquello que puede hacer que el proyecto sea difícil de copiar o sustituir. "
-            "Puede estar asociada a conocimiento técnico, adaptación al contexto, experiencia del equipo, diseño, integración tecnológica, datos, alianzas o validaciones previas.\n\n"
-            "• Conocimiento especializado del problema.\n"
-            "• Adaptación a condiciones reales del usuario.\n"
-            "• Diseño, tecnología o metodología diferenciadora.\n"
-            "• Capacidad de mejora continua y cercanía con el cliente."
+            f"{interpretacion}\n\n"
+            "La ventaja diferencial debe identificar qué hace que el producto sea más pertinente, difícil de copiar o valioso frente a alternativas. Puede estar en la adaptación al contexto, el conocimiento técnico, la facilidad de uso, el diseño, la integración tecnológica, el costo, la marca, la cercanía con el usuario, los datos generados o la capacidad de personalización. "
+            "Esta ventaja debe validarse con evidencias, no asumirse como definitiva.\n\n"
+            "• Elemento diferenciador principal.\n"
+            "• Barrera frente a imitadores.\n"
+            "• Relación con necesidades del cliente.\n"
+            "• Evidencia requerida para sostener la ventaja."
         ),
     }
 
     texto = bases.get(item, "")
-    texto += (
-        "\n\nEl contenido se plantea como una hipótesis estratégica inicial construida a partir de la descripción suministrada por el usuario. "
-        "Debe validarse mediante entrevistas, observación, pruebas piloto, revisión de mercado y contraste con clientes reales."
-    )
-
     while conteo_palabras(texto) < 150:
         texto += (
-            "\n\n• Recomendación de validación: documentar supuestos, revisar competidores, conversar con usuarios potenciales, "
-            "analizar restricciones de implementación y ajustar el modelo conforme aparezcan nuevas evidencias."
+            "\n\n• Validación sugerida: contrastar este bloque con usuarios potenciales, revisar competidores, documentar supuestos y ajustar el modelo con base en evidencias reales."
         )
 
     return limpiar_texto_canvas(texto)
-
 
 def generar_lean_canvas_modo_prueba(
     nombre_proyecto: str,
@@ -4718,43 +4752,44 @@ def generar_lean_canvas_con_chatgpt(
     client = OpenAI(api_key=api_key)
 
     instrucciones = """
-Eres un consultor senior en modelos de negocio, innovación y proyectos de base tecnológica.
-Debes generar un Lean Canvas profesional para un proyecto de SENA Tecnoparque.
-Responde únicamente JSON válido, sin markdown y sin texto adicional.
-No inventes datos financieros certificados, clientes reales, alianzas reales, validaciones reales ni ventas.
-Cada uno de los 9 campos debe tener entre 150 y 220 palabras.
-Puedes estructurar cada campo en párrafos cortos y viñetas cuando sea útil.
-Usa saltos de línea con \n para separar párrafos o ideas.
-Usa la descripción del producto y los aspectos a tener en cuenta solo como insumo de interpretación.
-No copies literalmente los textos del usuario; identifica a qué hacen referencia y redacta el modelo con tus propias palabras.
-La redacción debe ser técnica, estratégica, clara y orientada a validación del modelo de negocio.
+Eres un consultor senior en modelos de negocio, innovación, emprendimiento tecnológico y proyectos de base tecnológica del SENA Tecnoparque.
+
+Tu tarea es construir un Lean Canvas aplicado específicamente al producto descrito por el usuario.
+
+Reglas obligatorias:
+1. Usa la descripción del producto y los aspectos indicados como insumo de análisis, no como texto para copiar.
+2. Identifica internamente qué tipo de producto, servicio, prototipo, software, marca, sistema, dispositivo o desarrollo se plantea.
+3. Cada bloque debe mencionar elementos aplicados al producto: usuario, necesidad, funcionalidad, forma de entrega, diferenciador, costos o validación según corresponda.
+4. Evita textos genéricos que puedan servir para cualquier proyecto.
+5. No inventes ventas, clientes reales, alianzas confirmadas, certificaciones, cifras financieras ni validaciones no suministradas.
+6. Puedes formular hipótesis de mercado, pero debes expresarlas como hipótesis a validar.
+7. Usa párrafos cortos y, cuando ayude, viñetas con saltos de línea usando \\n.
+8. Cada bloque debe tener entre 150 y 220 palabras.
+9. No pegues literalmente frases extensas de los campos diligenciados por el usuario.
+10. Responde únicamente JSON válido, sin markdown, sin explicaciones y sin texto adicional.
 """
 
     entrada = f"""
-Genera un modelo de negocio Lean Canvas para el siguiente proyecto.
+Datos del proyecto:
+Nombre del proyecto: {nombre_proyecto}
+Código del proyecto: {codigo_proyecto}
 
-Nombre del proyecto:
-{nombre_proyecto}
-
-Código del proyecto:
-{codigo_proyecto}
-
-Descripción del producto, solo como insumo para interpretar el tipo de solución, usuarios y contexto:
+Descripción del producto dada por el usuario:
 {descripcion_producto}
 
-Aspectos a tener en cuenta, solo como insumo para orientar el análisis estratégico:
+Aspectos a tener en cuenta dados por el usuario:
 {aspectos_generacion}
 
-Debes generar exactamente estos 9 campos:
-1. Problema
-2. Segmentos de clientes
-3. Propuesta única de valor
-4. Solución
-5. Canales
-6. Fuentes de ingresos
-7. Estructura de costos
-8. Métricas clave
-9. Ventaja diferencial
+Proceso esperado:
+Primero interpreta internamente:
+- Qué producto o solución se está planteando.
+- Qué necesidad atiende.
+- Qué usuarios o clientes podrían beneficiarse.
+- Qué características o restricciones estratégicas menciona el usuario.
+- Qué hipótesis de mercado pueden formularse sin inventar datos.
+
+Luego genera un Lean Canvas aplicado al producto y a sus características.
+No transcribas literalmente la descripción ni los aspectos; conviértelos en análisis estratégico específico.
 
 Formato JSON obligatorio:
 {{
@@ -4775,12 +4810,12 @@ Formato JSON obligatorio:
             model=modelo,
             instructions=instrucciones,
             input=entrada,
-            temperature=0.32,
+            temperature=0.26,
         )
 
         datos = json.loads(limpiar_respuesta_json(respuesta.output_text))
 
-        base = generar_lean_canvas_modo_prueba(
+        respaldo = generar_lean_canvas_modo_prueba(
             nombre_proyecto,
             codigo_proyecto,
             descripcion_producto,
@@ -4788,13 +4823,13 @@ Formato JSON obligatorio:
         )
 
         for item in ITEMS_LEAN_CANVAS:
-            if item not in datos or not isinstance(datos[item], str) or conteo_palabras(datos[item]) < 120:
-                datos[item] = base[item]
+            if item not in datos or not isinstance(datos[item], str) or conteo_palabras(datos[item]) < 110:
+                datos[item] = respaldo[item]
 
             while conteo_palabras(datos[item]) < 150:
                 datos[item] += (
-                    "\n\n• Validación sugerida: realizar entrevistas con usuarios potenciales, revisar alternativas existentes, "
-                    "documentar supuestos del mercado y ajustar este bloque conforme se obtenga evidencia real."
+                    "\n\n• Validación sugerida: contrastar este bloque con usuarios potenciales, revisar alternativas existentes, "
+                    "documentar supuestos del mercado y ajustar el modelo conforme se obtenga evidencia real del producto."
                 )
 
             datos[item] = limpiar_texto_canvas(datos[item])
@@ -4808,7 +4843,6 @@ Formato JSON obligatorio:
             descripcion_producto,
             aspectos_generacion,
         )
-
 
 def parrafo_canvas_pdf(texto: str, estilo: ParagraphStyle) -> Paragraph:
     from html import escape
@@ -4913,12 +4947,6 @@ def generar_pdf_lean_canvas(datos: dict) -> str:
 
     historia.append(Paragraph("MODELO DE NEGOCIO LEAN CANVAS", estilo_titulo))
     historia.append(Paragraph(f"{datos.get('codigo_proyecto', '')} - {datos.get('nombre_proyecto', '')}", estilo_subtitulo))
-    historia.append(Paragraph(
-        "El siguiente canvas sintetiza el modelo de negocio generado a partir de los insumos suministrados. "
-        "Los campos del formulario fueron usados como contexto de interpretación y no se transcriben literalmente. "
-        "El contenido constituye una hipótesis estratégica inicial sujeta a validación con usuarios y mercado.",
-        estilo_nota,
-    ))
 
     def celda_canvas(titulo: str) -> Paragraph:
         resumen = resumen_canvas_pdf(contenido.get(titulo, ""), max_palabras=42)
