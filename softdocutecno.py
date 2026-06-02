@@ -6946,7 +6946,7 @@ elif st.session_state.fase_seleccionada == "cierre":
 
                 trl_obtenido = st.selectbox(
                     "TRL obtenido",
-                    options=["TRL 6", "TRL 7", "TRL 8"]
+                    options=["TRL 6", "TRL 7", "TRL 8", "TRL 9"]
                 )
 
                 aporte_tecnoparque = st.number_input(
