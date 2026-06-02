@@ -4536,8 +4536,9 @@ def generar_docx_informe_tecnico_final(datos: dict) -> str:
 
 
 # =====================================================
+# =====================================================
 # MODELO DE NEGOCIOS - FASE DE CIERRE / PDF
-# Basado en formato de identificación de modelo de negocios TRL 6
+# Basado en formato de identificación de modelo de negocios TRL 6 / TRL 7
 # =====================================================
 
 ITEMS_LEAN_CANVAS = [
@@ -4566,55 +4567,35 @@ PREGUNTAS_MODELO_NEGOCIO = {
 
 
 def limpiar_texto_canvas(texto: str) -> str:
-    """Normaliza texto para PDF conservando párrafos y viñetas."""
+    """Normaliza texto para PDF conservando párrafos simples y eliminando puntos suspensivos."""
     texto = str(texto or "").strip()
     texto = texto.replace("\\n", "\n")
-    texto = texto.replace("- ", "• ")
-    texto = texto.replace("* ", "• ")
+    texto = texto.replace("…", ".").replace("...", ".")
+    texto = texto.replace("- ", "• ").replace("* ", "• ")
     while "\n\n\n" in texto:
         texto = texto.replace("\n\n\n", "\n\n")
-    return texto
-
-
-def extraer_palabras(texto: str, limite: int) -> str:
-    palabras = str(texto or "").replace("\n", " ").split()
-    if len(palabras) <= limite:
-        return " ".join(palabras)
-    return " ".join(palabras[:limite]).rstrip(".,;:") + "..."
-
-
-def resumen_canvas_pdf(texto: str, max_palabras: int = 34) -> str:
-    """Resumen corto para el cuadro principal del canvas, evitando cortes visuales."""
-    texto = limpiar_texto_canvas(texto)
-    partes = []
-    for linea in texto.splitlines():
-        limpia = linea.strip(" •\t")
-        if limpia:
-            partes.append(limpia)
-        if len(" ".join(partes).split()) >= max_palabras:
-            break
-    return extraer_palabras(" ".join(partes), max_palabras)
+    return texto.strip()
 
 
 def interpretar_tipo_producto(nombre_proyecto: str, descripcion_producto: str, aspectos_generacion: str, region_contexto: str) -> str:
     texto_total = f"{nombre_proyecto} {descripcion_producto} {aspectos_generacion} {region_contexto}".lower()
     categorias = []
     if any(p in texto_total for p in ["software", "app", "plataforma", "sistema", "web", "aplicación", "aplicacion", "dashboard", "base de datos", "módulo", "modulo"]):
-        categorias.append("solución digital o sistema de información")
+        categorias.append("sistema digital")
     if any(p in texto_total for p in ["sensor", "electrónica", "electronica", "automatización", "automatizacion", "iot", "microcontrolador", "dispositivo", "control"]):
-        categorias.append("desarrollo electrónico, dispositivo o solución automatizada")
+        categorias.append("solución electrónica o automatizada")
     if any(p in texto_total for p in ["marca", "logotipo", "identidad", "branding", "manual de marca", "diseño gráfico"]):
-        categorias.append("desarrollo de marca e identidad visual")
+        categorias.append("marca e identidad visual")
     if any(p in texto_total for p in ["agro", "alimento", "café", "cafe", "proceso", "producto agroindustrial", "cultivo", "rural"]):
-        categorias.append("prototipo o solución agroindustrial")
+        categorias.append("solución agroindustrial")
     if any(p in texto_total for p in ["diseño", "diseño industrial", "cad", "prototipo", "producto físico", "producto fisico", "mecanismo"]):
-        categorias.append("diseño o prototipo de producto")
+        categorias.append("prototipo de producto")
     if any(p in texto_total for p in ["ia", "inteligencia artificial", "modelo", "clasificación", "clasificacion", "predicción", "prediccion", "machine learning"]):
-        categorias.append("solución basada en inteligencia artificial")
+        categorias.append("solución con inteligencia artificial")
 
     if categorias:
         return ", ".join(dict.fromkeys(categorias))
-    return "producto, servicio o prototipo de base tecnológica"
+    return "producto o servicio de base tecnológica"
 
 
 def contexto_lean_para_ia(
@@ -4623,11 +4604,15 @@ def contexto_lean_para_ia(
     descripcion_producto: str,
     aspectos_generacion: str,
     region_contexto: str,
+    usuarios_objetivo: str = "",
+    trl_nivel: str = "TRL 6",
 ) -> str:
     tipo = interpretar_tipo_producto(nombre_proyecto, descripcion_producto, aspectos_generacion, region_contexto)
+    usuarios = usuarios_objetivo.strip() or "No especificado; inferir con prudencia a partir del producto, contexto y usuarios probables."
     return f"""
 Nombre del proyecto: {nombre_proyecto}
 Código del proyecto: {codigo_proyecto}
+Nivel TRL del informe: {trl_nivel}
 Tipo inferido de solución: {tipo}
 Descripción del prototipo, producto o servicio suministrada por el usuario:
 {descripcion_producto}
@@ -4635,9 +4620,60 @@ Descripción del prototipo, producto o servicio suministrada por el usuario:
 Región, territorio o contexto de implementación suministrado por el usuario:
 {region_contexto}
 
+Usuarios, clientes o beneficiarios objetivo indicados por el usuario:
+{usuarios}
+
 Aspectos estratégicos a tener en cuenta suministrados por el usuario:
 {aspectos_generacion}
 """.strip()
+
+
+def remover_nombre_proyecto_en_bloque(texto: str, nombre_proyecto: str, codigo_proyecto: str = "") -> str:
+    texto = limpiar_texto_canvas(texto)
+    for valor in [nombre_proyecto, codigo_proyecto]:
+        valor = str(valor or "").strip()
+        if valor:
+            texto = texto.replace(valor, "la solución")
+            texto = texto.replace(valor.upper(), "la solución")
+            texto = texto.replace(valor.lower(), "la solución")
+    return texto
+
+
+def limitar_caracteres_canvas(texto: str, nombre_proyecto: str = "", codigo_proyecto: str = "", min_chars: int = 150, max_chars: int = 250) -> str:
+    """Ajusta el texto entre 150 y 250 caracteres, sin puntos suspensivos ni cortes con '...'."""
+    texto = remover_nombre_proyecto_en_bloque(texto, nombre_proyecto, codigo_proyecto)
+    texto = " ".join(texto.replace("\n", " ").split())
+    texto = texto.replace("…", ".").replace("...", ".")
+
+    frases_no_deseadas = [
+        "se debe diligenciar", "debe contener", "este bloque debe", "se recomienda poner",
+        "debería incluir", "como llenar", "cómo llenar", "en este campo", "debe responder",
+        "debe analizar", "el usuario indicó", "el usuario señala", "según la descripción",
+        "de acuerdo con la descripción", "este apartado", "este bloque"
+    ]
+    texto_lower = texto.lower()
+    for frase in frases_no_deseadas:
+        if frase in texto_lower:
+            texto = texto.replace(frase, "")
+
+    if len(texto) > max_chars:
+        corte = texto[:max_chars]
+        ultimo_punto = max(corte.rfind("."), corte.rfind(";"))
+        ultimo_espacio = corte.rfind(" ")
+        if ultimo_punto >= min_chars:
+            texto = corte[:ultimo_punto + 1]
+        elif ultimo_espacio >= min_chars:
+            texto = corte[:ultimo_espacio].rstrip(" ,;:") + "."
+        else:
+            texto = corte.rstrip(" ,;:") + "."
+
+    while len(texto) < min_chars:
+        texto += " Incluye soporte, validación y mejora continua para facilitar su adopción."
+        if len(texto) > max_chars:
+            texto = texto[:max_chars].rsplit(" ", 1)[0].rstrip(" ,;:") + "."
+            break
+
+    return texto.strip().replace("...", ".").replace("…", ".")
 
 
 def generar_modelo_negocio_modo_prueba(
@@ -4646,101 +4682,30 @@ def generar_modelo_negocio_modo_prueba(
     descripcion_producto: str,
     aspectos_generacion: str,
     region_contexto: str,
+    usuarios_objetivo: str = "",
+    trl_nivel: str = "TRL 6",
 ) -> dict:
-    """
-    Fallback local. Usa el nombre, descripción, región y aspectos como contexto interpretativo,
-    sin transcribirlos literalmente.
-    """
+    """Fallback local: genera respuestas concretas, cortas y aplicadas, no instrucciones."""
     tipo = interpretar_tipo_producto(nombre_proyecto, descripcion_producto, aspectos_generacion, region_contexto)
-    region_texto = region_contexto.strip() or "el contexto territorial donde se implemente la solución"
-
-    base_contexto = (
-        f"Para el proyecto {nombre_proyecto}, identificado con el código {codigo_proyecto}, el modelo se interpreta como una propuesta de {tipo}. "
-        f"La lectura estratégica se orienta al contexto de implementación en {region_texto}, considerando usuarios, operación, adopción, soporte y validación territorial. "
-        "La información diligenciada se usa como insumo para formular hipótesis de negocio aplicadas al producto, no como texto transcrito."
-    )
+    region = region_contexto.strip() or "el contexto de implementación definido"
+    usuarios = usuarios_objetivo.strip() or "usuarios y beneficiarios con necesidad directa"
 
     contenido = {
-        "Propuesta de valor": (
-            f"{base_contexto}\n\n"
-            "La propuesta de valor se centra en convertir el prototipo o producto en una solución útil para resolver una necesidad concreta del usuario objetivo. "
-            "El valor debe expresarse en beneficios verificables como ahorro de tiempo, reducción de errores, mejora del control, trazabilidad, facilidad de uso, pertinencia regional, disminución de costos operativos o acceso a información más organizada. "
-            "En una primera etapa, esta propuesta debe validarse con usuarios reales del territorio o del sector donde se implementará.\n\n"
-            "• Beneficio central: mejorar la forma en que el usuario atiende la necesidad identificada.\n"
-            "• Diferenciador esperado: adaptación al contexto local y a las características técnicas del producto.\n"
-            "• Validación sugerida: pruebas piloto, entrevistas y revisión de resultados frente a alternativas actuales."
-        ),
-        "Segmento de clientes y estrategia de adopción": (
-            f"{base_contexto}\n\n"
-            "Los segmentos de clientes deben priorizar a quienes experimentan directamente el problema, a quienes toman decisiones de compra o implementación y a los actores que pueden facilitar la adopción en la región. "
-            "La estrategia inicial debe enfocarse en usuarios tempranos con alta necesidad, capacidad de probar la solución y disposición para retroalimentar el producto. "
-            "Dependiendo del proyecto, pueden existir clientes institucionales, empresas, unidades productivas, emprendedores, centros de formación, asociaciones, usuarios finales o entidades territoriales.\n\n"
-            "• Clientes principales: usuarios con necesidad evidente y contexto de uso definido.\n"
-            "• Adoptadores tempranos: aliados o beneficiarios dispuestos a probar la solución.\n"
-            "• Estrategia: demostraciones, pilotos, capacitación y acompañamiento inicial."
-        ),
-        "Canales de distribución": (
-            f"{base_contexto}\n\n"
-            "Los canales deben permitir que el cliente conozca, evalúe, pruebe, adquiera o implemente el producto. Para el contexto regional, es recomendable combinar canales directos con espacios de demostración y acompañamiento técnico. "
-            "Pueden considerarse visitas técnicas, ferias, ruedas de negocio, redes sociales, página web, WhatsApp, aliados institucionales, capacitaciones o pilotos en campo. "
-            "Si el producto requiere explicación técnica, el canal debe incluir demostraciones y soporte para disminuir barreras de adopción.\n\n"
-            "• Canal de descubrimiento: difusión digital, eventos o aliados locales.\n"
-            "• Canal de validación: pilotos, demostraciones y pruebas con usuarios.\n"
-            "• Canal de entrega: implementación directa, soporte remoto o acompañamiento presencial."
-        ),
-        "Relaciones con clientes": (
-            f"{base_contexto}\n\n"
-            "La relación con los clientes debe enfocarse en generar confianza, acompañar la adopción y recoger retroalimentación para mejorar el producto. En proyectos de base tecnológica, la relación no termina con la entrega inicial; suele requerir capacitación, soporte, actualización, seguimiento y orientación sobre el uso correcto. "
-            "En el contexto regional, la cercanía con usuarios y aliados puede ser una ventaja para ajustar la solución a condiciones reales.\n\n"
-            "• Obtención: demostraciones, casos piloto y comunicación clara del beneficio.\n"
-            "• Retención: soporte, capacitación, mejoras y seguimiento periódico.\n"
-            "• Crecimiento: referidos, nuevas funcionalidades, acompañamiento y evidencia de resultados."
-        ),
-        "Flujo de Ingresos": (
-            f"{base_contexto}\n\n"
-            "El flujo de ingresos debe plantearse como hipótesis de sostenibilidad y no como ventas confirmadas. Según la naturaleza del producto, pueden existir ingresos por venta directa, licenciamiento, suscripción, implementación, mantenimiento, capacitación, personalización, soporte técnico o servicios complementarios. "
-            "También puede existir valor económico indirecto cuando la solución genera ahorro, eficiencia o reducción de desperdicios para una institución o empresa.\n\n"
-            "• Ingreso principal: venta, licencia, implementación o servicio asociado.\n"
-            "• Ingresos complementarios: soporte, actualización, capacitación o personalización.\n"
-            "• Validación: pruebas de disposición de pago y comparación con costos actuales del problema."
-        ),
-        "Recursos Claves": (
-            f"{base_contexto}\n\n"
-            "Los recursos clave corresponden a los elementos necesarios para desarrollar, operar y sostener el producto. Pueden incluir conocimiento técnico, talento humano, infraestructura, materiales, software, hardware, documentación, prototipos, metodologías, datos, diseños, marca o alianzas. "
-            "En la región de implementación, también son importantes los recursos asociados a validación con usuarios, acceso a escenarios reales y soporte para adopción.\n\n"
-            "• Recursos humanos: equipo técnico, asesoría, usuarios validadores y aliados.\n"
-            "• Recursos técnicos: herramientas, infraestructura, prototipo, software o materiales.\n"
-            "• Recursos intelectuales: documentación, diseño, know-how y aprendizajes del proceso."
-        ),
-        "Actividades Claves": (
-            f"{base_contexto}\n\n"
-            "Las actividades clave son las acciones que permiten que el modelo funcione. Incluyen diseño, desarrollo, producción, integración, validación, documentación, capacitación, comercialización, soporte y mejora continua. "
-            "Para que el producto sea viable en el contexto regional, es necesario realizar actividades de prueba con usuarios reales, ajuste técnico, medición de resultados y comunicación del valor.\n\n"
-            "• Desarrollo o producción del prototipo.\n"
-            "• Pruebas funcionales y validación con usuarios del contexto.\n"
-            "• Documentación, capacitación y soporte.\n"
-            "• Estrategias de adopción, difusión y seguimiento."
-        ),
-        "Alianzas claves": (
-            f"{base_contexto}\n\n"
-            "Las alianzas clave deben facilitar recursos, acceso a usuarios, validación, implementación o escalamiento. Pueden incluir entidades públicas, instituciones educativas, empresas, proveedores, asociaciones productivas, aliados tecnológicos, expertos, comunidades de usuarios o canales comerciales. "
-            "En el territorio, las alianzas son importantes para ganar confianza, probar la solución en escenarios reales y ajustar el producto a condiciones locales.\n\n"
-            "• Aliados técnicos: proveedores, expertos o desarrolladores.\n"
-            "• Aliados de validación: usuarios piloto, instituciones o empresas del sector.\n"
-            "• Aliados de adopción: canales, entidades territoriales o redes comerciales."
-        ),
-        "Estructura de Costos": (
-            f"{base_contexto}\n\n"
-            "La estructura de costos debe identificar los rubros necesarios para desarrollar, validar, entregar y mantener el producto. Estos pueden incluir diseño, materiales, software, hardware, prototipado, programación, producción, pruebas, documentación, mercadeo, logística, soporte, capacitación o mantenimiento. "
-            "Los costos deben analizarse como estimaciones técnicas y no como cifras contables certificadas.\n\n"
-            "• Costos de desarrollo o fabricación.\n"
-            "• Costos de validación, pruebas y documentación.\n"
-            "• Costos de operación, soporte y mejora continua.\n"
-            "• Costos de comercialización, capacitación o implementación en la región."
-        ),
+        "Propuesta de valor": f"Ofrece una {tipo} práctica, ajustada a {region}, que mejora tiempos, orden, trazabilidad y toma de decisiones. Entrega valor por su utilidad funcional, adaptación local y capacidad de validar resultados.",
+        "Segmento de clientes y estrategia de adopción": f"Los clientes iniciales son {usuarios}. La adopción se impulsa con pilotos, demostraciones, capacitación breve y evidencia de beneficios operativos antes de escalar a otros usuarios similares.",
+        "Canales de distribución": f"La solución se entrega mediante contacto directo, demostraciones, soporte digital y aliados del territorio. Los canales priorizan explicación técnica, prueba funcional y acompañamiento durante la implementación.",
+        "Relaciones con clientes": "La relación se basa en atención personalizada, soporte técnico continuo, canales de comunicación para incidentes y seguimiento a necesidades específicas. La solución se presenta como herramienta funcional en mejora constante.",
+        "Flujo de Ingresos": "Los ingresos pueden generarse por implementación, licenciamiento, suscripción, soporte, mantenimiento, capacitación o personalización. También crea valor por ahorro, eficiencia y reducción de reprocesos.",
+        "Recursos Claves": f"Requiere talento técnico, documentación, prototipo funcional, herramientas de desarrollo, infraestructura y usuarios validadores. El conocimiento del contexto regional fortalece su ajuste y adopción.",
+        "Actividades Claves": "Las actividades centrales son desarrollo, pruebas, documentación, capacitación, soporte y ajustes funcionales. También incluye demostraciones y validación con usuarios reales para confirmar utilidad.",
+        "Alianzas claves": f"Las alianzas estratégicas incluyen actores de {region}, usuarios piloto, proveedores técnicos, instituciones de apoyo y aliados de implementación que faciliten validación, acceso y adopción.",
+        "Estructura de Costos": "Los costos se concentran en desarrollo, diseño, pruebas, infraestructura, soporte, documentación, capacitación y mantenimiento. También pueden incluir adaptación local y acompañamiento inicial.",
     }
 
-    return contenido
+    return {
+        clave: limitar_caracteres_canvas(valor, nombre_proyecto, codigo_proyecto, 150, 250)
+        for clave, valor in contenido.items()
+    }
 
 
 # Alias para compatibilidad con llamadas anteriores del módulo.
@@ -4750,6 +4715,8 @@ def generar_lean_canvas_modo_prueba(
     descripcion_producto: str,
     aspectos_generacion: str,
     region_contexto: str = "",
+    usuarios_objetivo: str = "",
+    trl_nivel: str = "TRL 6",
 ) -> dict:
     return generar_modelo_negocio_modo_prueba(
         nombre_proyecto,
@@ -4757,6 +4724,8 @@ def generar_lean_canvas_modo_prueba(
         descripcion_producto,
         aspectos_generacion,
         region_contexto,
+        usuarios_objetivo,
+        trl_nivel,
     )
 
 
@@ -4766,6 +4735,8 @@ def generar_modelo_negocio_con_chatgpt(
     descripcion_producto: str,
     aspectos_generacion: str,
     region_contexto: str,
+    usuarios_objetivo: str = "",
+    trl_nivel: str = "TRL 6",
     modelo: str = "gpt-4.1-mini",
 ) -> dict:
     if OpenAI is None:
@@ -4780,34 +4751,26 @@ def generar_modelo_negocio_con_chatgpt(
     instrucciones = """
 Eres un consultor senior en modelos de negocio, innovación, emprendimiento tecnológico y proyectos de base tecnológica del SENA Tecnoparque Nodo Angostura.
 
-Debes construir un INFORME DE IDENTIFICACIÓN DEL MODELO DE NEGOCIOS TRL 6 aplicado específicamente al proyecto descrito por el usuario.
+Construye un informe de identificación del modelo de negocios aplicado específicamente al producto descrito por el usuario. El nivel TRL será TRL 6 o TRL 7 según el dato suministrado.
 
 Reglas obligatorias:
-1. Usa el nombre del proyecto, la descripción del prototipo/producto, la región o contexto de implementación y los aspectos estratégicos como insumos de análisis.
-2. No transcribas literalmente la descripción ni los aspectos; interpreta a qué hacen referencia y conviértelos en análisis de negocio aplicado.
-3. Cada bloque debe estar relacionado con el producto, sus características, el territorio o región donde se implementa, los usuarios y el contexto operativo.
-4. No generes textos genéricos que puedan servir para cualquier proyecto.
-5. No inventes ventas, clientes reales, alianzas confirmadas, certificaciones, cifras financieras ni validaciones no suministradas.
-6. Puedes proponer hipótesis de mercado, adopción, ingresos, costos y alianzas, pero debes presentarlas como hipótesis a validar.
-7. Usa párrafos cortos y, cuando sea útil, viñetas con saltos de línea usando \\n.
-8. Cada bloque debe tener entre 150 y 220 palabras.
-9. Responde únicamente JSON válido, sin markdown, sin explicación y sin texto adicional.
+1. Usa el nombre del proyecto solo como contexto interno. No lo incluyas dentro de las respuestas de los 9 campos.
+2. No transcribas literalmente ninguna frase del formulario. Interpreta, corrige ortografía y gramática, amplía el concepto y redacta una respuesta propia.
+3. Cada respuesta debe resolver directamente la pregunta del campo, no explicar qué debería escribirse allí.
+4. No uses frases instructivas como: “se debe diligenciar”, “este bloque debe”, “se recomienda”, “debe contener”, “según la descripción” o “el usuario indica”.
+5. Cada respuesta debe estar aplicada al producto, a sus características, al contexto regional de implementación, a los usuarios, soporte, adopción, ingresos, costos, recursos o alianzas según corresponda.
+6. No inventes ventas, clientes reales, cifras certificadas, alianzas confirmadas, certificaciones ni validaciones no suministradas.
+7. Puedes proponer hipótesis de mercado, adopción, ingresos, costos y alianzas, siempre redactadas como planteamientos iniciales aplicados al producto.
+8. Cada campo debe tener entre 150 y 250 caracteres, no palabras.
+9. No uses puntos suspensivos.
+10. Responde únicamente JSON válido, sin markdown, sin explicación y sin texto adicional.
 """
 
     entrada = f"""
 Contexto del proyecto:
-{contexto_lean_para_ia(nombre_proyecto, codigo_proyecto, descripcion_producto, aspectos_generacion, region_contexto)}
+{contexto_lean_para_ia(nombre_proyecto, codigo_proyecto, descripcion_producto, aspectos_generacion, region_contexto, usuarios_objetivo, trl_nivel)}
 
-Debes generar exactamente estos 9 campos, basados en el formato institucional de identificación de modelo de negocios TRL 6:
-1. Propuesta de valor
-2. Segmento de clientes y estrategia de adopción
-3. Canales de distribución
-4. Relaciones con clientes
-5. Flujo de Ingresos
-6. Recursos Claves
-7. Actividades Claves
-8. Alianzas claves
-9. Estructura de Costos
+Genera exactamente estos 9 campos, resolviendo cada pregunta del formato institucional de modelo de negocios. Recuerda: no incluyas el nombre del proyecto dentro de los campos y no copies literal lo escrito por el usuario.
 
 Formato JSON obligatorio:
 {{
@@ -4828,7 +4791,7 @@ Formato JSON obligatorio:
             model=modelo,
             instructions=instrucciones,
             input=entrada,
-            temperature=0.26,
+            temperature=0.22,
         )
 
         datos = json.loads(limpiar_respuesta_json(respuesta.output_text))
@@ -4839,19 +4802,29 @@ Formato JSON obligatorio:
             descripcion_producto,
             aspectos_generacion,
             region_contexto,
+            usuarios_objetivo,
+            trl_nivel,
         )
 
+        frases_no_deseadas = [
+            "se debe diligenciar", "debe contener", "este bloque debe", "se recomienda",
+            "debería incluir", "como llenar", "cómo llenar", "en este campo",
+            "debe responder", "debe analizar", "el usuario indicó", "el usuario señala",
+            "según la descripción", "de acuerdo con la descripción", "este apartado", "este bloque",
+        ]
+
         for item in ITEMS_LEAN_CANVAS:
-            if item not in datos or not isinstance(datos[item], str) or conteo_palabras(datos[item]) < 110:
-                datos[item] = respaldo[item]
+            texto = datos.get(item, "") if isinstance(datos, dict) else ""
+            if not isinstance(texto, str) or not texto.strip():
+                texto = respaldo[item]
 
-            while conteo_palabras(datos[item]) < 150:
-                datos[item] += (
-                    "\n\n• Validación sugerida: contrastar este bloque con usuarios potenciales de la región, revisar alternativas existentes, "
-                    "documentar supuestos de adopción y ajustar el modelo según evidencia real del producto."
-                )
+            texto_limpio = remover_nombre_proyecto_en_bloque(texto, nombre_proyecto, codigo_proyecto)
+            texto_lower = texto_limpio.lower()
 
-            datos[item] = limpiar_texto_canvas(datos[item])
+            if any(frase in texto_lower for frase in frases_no_deseadas):
+                texto_limpio = respaldo[item]
+
+            datos[item] = limitar_caracteres_canvas(texto_limpio, nombre_proyecto, codigo_proyecto, 150, 250)
 
         return {item: datos[item] for item in ITEMS_LEAN_CANVAS}
 
@@ -4862,6 +4835,8 @@ Formato JSON obligatorio:
             descripcion_producto,
             aspectos_generacion,
             region_contexto,
+            usuarios_objetivo,
+            trl_nivel,
         )
 
 
@@ -4873,6 +4848,8 @@ def generar_lean_canvas_con_chatgpt(
     aspectos_generacion: str,
     modelo: str = "gpt-4.1-mini",
     region_contexto: str = "",
+    usuarios_objetivo: str = "",
+    trl_nivel: str = "TRL 6",
 ) -> dict:
     return generar_modelo_negocio_con_chatgpt(
         nombre_proyecto,
@@ -4880,6 +4857,8 @@ def generar_lean_canvas_con_chatgpt(
         descripcion_producto,
         aspectos_generacion,
         region_contexto,
+        usuarios_objetivo,
+        trl_nivel,
         modelo,
     )
 
@@ -4911,13 +4890,11 @@ def generar_pdf_lean_canvas(datos: dict) -> str:
     page_size = landscape(letter)
     page_width, page_height = page_size
 
-    verde = colors.HexColor("#39A935")
     verde_claro = colors.HexColor("#EAF5EA")
     gris = colors.HexColor("#F4F4F4")
     amarillo = colors.HexColor("#FFF2CC")
     azul = colors.HexColor("#D9EAF7")
     rojo = colors.HexColor("#F4CCCC")
-    blanco = colors.white
 
     doc = SimpleDocTemplate(
         ruta_pdf,
@@ -4935,14 +4912,6 @@ def generar_pdf_lean_canvas(datos: dict) -> str:
         leading=15,
         alignment=TA_CENTER,
         textColor=colors.black,
-    )
-    estilo_subtitulo = ParagraphStyle(
-        name="SubtituloModeloNegocios",
-        fontName="Helvetica-Bold",
-        fontSize=8.5,
-        leading=10,
-        alignment=TA_CENTER,
-        spaceAfter=6,
     )
     estilo_info = ParagraphStyle(
         name="InfoModeloNegocios",
@@ -4978,26 +4947,19 @@ def generar_pdf_lean_canvas(datos: dict) -> str:
     estilo_canvas = ParagraphStyle(
         name="CanvasModeloNegocios",
         fontName="Helvetica",
-        fontSize=5.7,
-        leading=6.9,
+        fontSize=6.4,
+        leading=7.3,
         alignment=TA_LEFT,
     )
-    estilo_canvas_titulo = ParagraphStyle(
-        name="CanvasTituloModeloNegocios",
-        fontName="Helvetica-Bold",
-        fontSize=6.2,
-        leading=7.0,
-        alignment=TA_CENTER,
-        textColor=colors.black,
-    )
 
-    contenido = datos.get("contenido_lean_canvas", {})
+    contenido = {
+        item: limitar_caracteres_canvas(datos.get("contenido_lean_canvas", {}).get(item, ""), datos.get("nombre_proyecto", ""), datos.get("codigo_proyecto", ""), 150, 250)
+        for item in ITEMS_LEAN_CANVAS
+    }
+    trl_nivel = str(datos.get("trl_nivel", "TRL 6")).strip() or "TRL 6"
     historia = []
 
-    # Página 1: encabezado e identificación institucional
     logo_sena = obtener_ruta_logo_sena()
-    logo_tecno = obtener_ruta_logo_tecnoparque()
-
     if logo_sena and Path(logo_sena).exists():
         try:
             logo_izq = Image(logo_sena, width=2.0 * cm, height=1.25 * cm)
@@ -5006,7 +4968,7 @@ def generar_pdf_lean_canvas(datos: dict) -> str:
     else:
         logo_izq = Paragraph("SENA", estilo_titulo)
 
-    titulo_header = Paragraph("INFORME DE IDENTIFICACIÓN<br/>DEL MODELO DE NEGOCIOS<br/>TRL 6", estilo_titulo)
+    titulo_header = Paragraph(f"INFORME DE IDENTIFICACIÓN<br/>DEL MODELO DE NEGOCIOS<br/>{trl_nivel}", estilo_titulo)
     fecha_header = Paragraph("Fecha: Marzo 02 de 2020<br/>Versión: 02", estilo_info)
 
     tabla_header = Table(
@@ -5026,6 +4988,7 @@ def generar_pdf_lean_canvas(datos: dict) -> str:
 
     info_data = [
         [Paragraph("TALENTO QUE REALIZA EL INFORME:", estilo_info_bold), Paragraph(str(datos.get("nombre_talento", "No diligenciado")), estilo_info)],
+        [Paragraph("NIVEL TRL DEL INFORME:", estilo_info_bold), Paragraph(trl_nivel, estilo_info)],
         [Paragraph("Código del Proyecto:", estilo_info_bold), Paragraph(str(datos.get("codigo_proyecto", "")), estilo_info)],
         [Paragraph("Nombre del Proyecto:", estilo_info_bold), Paragraph(str(datos.get("nombre_proyecto", "")), estilo_info)],
         [Paragraph("GESTOR DE PROYECTO:", estilo_info_bold), Paragraph(str(datos.get("nombre_experto", "No diligenciado")), estilo_info)],
@@ -5045,10 +5008,9 @@ def generar_pdf_lean_canvas(datos: dict) -> str:
     ]))
     historia.append(tabla_info)
     historia.append(Spacer(1, 0.25 * cm))
-    historia.append(Paragraph("Responde las siguientes preguntas para construir su informe, describiendo de forma clara y concisa lo que se le pregunta a continuación:", estilo_info_bold))
+    historia.append(Paragraph("A continuación se presenta el informe de identificación del modelo de negocios desarrollado para el producto o prototipo descrito.", estilo_info_bold))
     historia.append(Spacer(1, 0.15 * cm))
 
-    # Preguntas 1 a 9 en cajas, con control de espacio por Flowables de ReportLab.
     colores_preguntas = [verde_claro, azul, amarillo, rojo, verde_claro, azul, amarillo, rojo, gris]
     for idx, item in enumerate(ITEMS_LEAN_CANVAS, start=1):
         titulo = f"{idx}. {item}: {PREGUNTAS_MODELO_NEGOCIO[item]}"
@@ -5069,14 +5031,14 @@ def generar_pdf_lean_canvas(datos: dict) -> str:
         historia.append(caja)
         historia.append(Spacer(1, 0.14 * cm))
 
-    # Página final: canvas visual con cuadros tipo tablero.
     historia.append(PageBreak())
     historia.append(Paragraph("MODELO DE NEGOCIOS.", estilo_info_bold))
     historia.append(Spacer(1, 0.2 * cm))
 
     def celda_canvas(titulo: str) -> Paragraph:
-        resumen = resumen_canvas_pdf(contenido.get(titulo, ""), max_palabras=32)
-        return Paragraph(f"<b>{titulo}</b><br/><br/>{resumen}", estilo_canvas)
+        from html import escape
+        texto_completo = limpiar_texto_canvas(contenido.get(titulo, ""))
+        return Paragraph(f"<b>{escape(titulo)}</b><br/><br/>{escape(texto_completo)}", estilo_canvas)
 
     tabla_canvas_data = [
         [
@@ -5100,7 +5062,8 @@ def generar_pdf_lean_canvas(datos: dict) -> str:
     tabla_canvas = Table(
         tabla_canvas_data,
         colWidths=[ancho_total / 3 for _ in range(3)],
-        rowHeights=[5.15 * cm, 5.15 * cm, 5.15 * cm],
+        rowHeights=[5.75 * cm, 5.75 * cm, 5.75 * cm],
+        repeatRows=0,
     )
     tabla_canvas.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.45, colors.black),
@@ -5125,7 +5088,7 @@ def generar_pdf_lean_canvas(datos: dict) -> str:
         c.saveState()
         c.setFont("Helvetica", 7)
         c.setFillColor(colors.grey)
-        c.drawCentredString(page_width / 2, 0.32 * cm, "Informe de identificación del modelo de negocios TRL 6 - Red Tecnoparque")
+        c.drawCentredString(page_width / 2, 0.32 * cm, f"Informe de identificación del modelo de negocios {trl_nivel} - Red Tecnoparque")
         c.restoreState()
 
     doc.build(historia, onFirstPage=encabezado_pie, onLaterPages=encabezado_pie)
@@ -6505,8 +6468,8 @@ elif st.session_state.fase_seleccionada == "cierre":
         st.subheader("Modelo de negocio Lean Canvas")
 
         st.info(
-            "Este módulo genera un Informe de Identificación del Modelo de Negocios TRL 6 en PDF, "
-            "con los 9 cuadros del modelo de negocios y un canvas visual final."
+            "Este módulo genera un Informe de Identificación del Modelo de Negocios en PDF. "
+            "Selecciona el nivel TRL correspondiente y diligencia los insumos mínimos para que el sistema construya respuestas aplicadas al producto, al contexto y a la región de implementación."
         )
 
         with st.form("form_lean_canvas"):
@@ -6516,6 +6479,12 @@ elif st.session_state.fase_seleccionada == "cierre":
                 codigo_proyecto_lc = st.text_input(
                     "Código del proyecto",
                     placeholder="Ejemplo: P2026-143440-00001"
+                )
+
+                trl_nivel_lc = st.selectbox(
+                    "Nivel TRL del informe",
+                    options=["TRL 6", "TRL 7"],
+                    index=0
                 )
 
                 nombre_proyecto_lc = st.text_area(
@@ -6539,8 +6508,14 @@ elif st.session_state.fase_seleccionada == "cierre":
 
                 aspectos_generacion_lc = st.text_area(
                     "Aspectos a tener en cuenta para la generación del modelo de negocio",
-                    placeholder="Ejemplo: público objetivo, tipo de cliente, diferenciadores, restricciones, canales deseados, aliados, precios estimados, forma de adopción, etc.",
-                    height=145
+                    placeholder="Ejemplo: diferenciadores, restricciones, canales deseados, aliados, precios estimados, forma de adopción, soporte esperado, etc.",
+                    height=120
+                )
+
+                usuarios_objetivo_lc = st.text_area(
+                    "Clientes, usuarios o beneficiarios objetivo (opcional)",
+                    placeholder="Ejemplo: centros de formación, productores cafeteros, emprendedores rurales, empresas del sector, aprendices, clientes finales, etc.",
+                    height=85
                 )
 
             with st.expander("Datos opcionales para el encabezado del informe"):
@@ -6587,6 +6562,8 @@ elif st.session_state.fase_seleccionada == "cierre":
                         descripcion_producto_lc,
                         aspectos_generacion_lc,
                         region_contexto_lc,
+                        usuarios_objetivo_lc,
+                        trl_nivel_lc,
                     )
                 else:
                     contenido_lean_canvas = generar_modelo_negocio_con_chatgpt(
@@ -6595,6 +6572,8 @@ elif st.session_state.fase_seleccionada == "cierre":
                         descripcion_producto_lc,
                         aspectos_generacion_lc,
                         region_contexto_lc,
+                        usuarios_objetivo_lc,
+                        trl_nivel_lc,
                         modelo_openai,
                     )
             except Exception as e:
@@ -6604,6 +6583,9 @@ elif st.session_state.fase_seleccionada == "cierre":
                     codigo_proyecto_lc,
                     descripcion_producto_lc,
                     aspectos_generacion_lc,
+                    region_contexto_lc,
+                    usuarios_objetivo_lc,
+                    trl_nivel_lc,
                 )
 
             progreso.progress(65)
@@ -6613,9 +6595,11 @@ elif st.session_state.fase_seleccionada == "cierre":
                 "tipo_documento": "Modelo de negocio Lean Canvas",
                 "codigo_proyecto": codigo_proyecto_lc,
                 "nombre_proyecto": nombre_proyecto_lc,
+                "trl_nivel": trl_nivel_lc,
                 "descripcion_producto": descripcion_producto_lc,
                 "aspectos_generacion": aspectos_generacion_lc,
                 "region_contexto": region_contexto_lc,
+                "usuarios_objetivo": usuarios_objetivo_lc,
                 "nombre_talento": nombre_talento_lc,
                 "nombre_experto": nombre_experto_lc,
                 "linea_tecnologica": linea_tecnologica_lc,
@@ -6641,6 +6625,7 @@ elif st.session_state.fase_seleccionada == "cierre":
             st.markdown("## Resumen para validación")
             st.write("**Código del proyecto:**", datos["codigo_proyecto"])
             st.write("**Nombre del proyecto:**", datos["nombre_proyecto"])
+            st.write("**Nivel TRL:**", datos.get("trl_nivel", "TRL seleccionado"))
             st.write("**Modo de generación:**", datos["modo_generacion"])
 
             st.markdown("### Cuadros generados")
